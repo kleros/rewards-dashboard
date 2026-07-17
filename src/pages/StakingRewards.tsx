@@ -8,18 +8,13 @@ import ErrorState from "components/ErrorState";
 import FetchProgress from "components/FetchProgress";
 import PageHeader from "components/PageHeader";
 import RewardsTable, { Column, Row } from "components/RewardsTable";
+import StatsRow, { Stat } from "components/StatsRow";
 import Tabs from "components/Tabs";
 import { StakingData, StakingMonthBucket, useStakingRewards } from "hooks/useStakingRewards";
-import { downloadBlob, toPnkNumber } from "utils/format";
+import { downloadBlob, formatPNK, toPnkNumber } from "utils/format";
 
 const MONTHLY = "Monthly Totals";
 const SUMMARY = "Summary";
-
-const HeaderMeta = styled.span`
-  font-size: 12px;
-  color: ${({ theme }) => theme.secondaryText};
-  white-space: nowrap;
-`;
 
 const ErrorBanner = styled.div`
   margin-top: 12px;
@@ -55,6 +50,36 @@ function summaryRows(data: StakingData): Row[] {
     "Gnosis PNK": totals.gnosis,
     "Grand Total": totals.mainnet + totals.gnosis,
   }));
+}
+
+// Stat cards for the current scope: all periods on Monthly Totals/Summary,
+// a single month on a month tab — mirrors the Curate page.
+function scopeStats(tab: string, data: StakingData): Stat[] {
+  let first: Stat;
+  let recipients: number;
+  let mainnet = 0n;
+  let gnosis = 0n;
+  if (tab === MONTHLY || tab === SUMMARY) {
+    first = { label: "Months", value: String(data.months.length) };
+    recipients = Object.keys(data.grandTotals).length;
+    for (const totals of Object.values(data.grandTotals)) {
+      mainnet += totals.mainnet;
+      gnosis += totals.gnosis;
+    }
+  } else {
+    const bucket = data.monthData[tab] ?? { mainnet: {}, gnosis: {} };
+    first = { label: "Month", value: tab };
+    recipients = new Set([...Object.keys(bucket.mainnet), ...Object.keys(bucket.gnosis)]).size;
+    for (const amount of Object.values(bucket.mainnet)) mainnet += amount;
+    for (const amount of Object.values(bucket.gnosis)) gnosis += amount;
+  }
+  return [
+    first,
+    { label: "Recipients", value: recipients.toLocaleString() },
+    { label: "Mainnet rewards", value: `${formatPNK(mainnet)} PNK` },
+    { label: "Gnosis rewards", value: `${formatPNK(gnosis)} PNK` },
+    { label: "Total distributed", value: `${formatPNK(mainnet + gnosis)} PNK` },
+  ];
 }
 
 function pnkColumns(firstKey: string, lastKey: string): Column[] {
@@ -144,14 +169,7 @@ export default function StakingRewards() {
         description="Monthly PNK rewards for jurors staking in Kleros Court, distributed on Ethereum Mainnet and Gnosis. Reconstructed from the merkle-drop snapshots published to IPFS."
         actions={
           phase === "done" &&
-          data && (
-            <>
-              <HeaderMeta>
-                {Object.keys(data.grandTotals).length.toLocaleString()} addresses · {data.months.length} months
-              </HeaderMeta>
-              <PrimaryButton onClick={() => downloadXlsx(data)}>Download XLSX</PrimaryButton>
-            </>
-          )
+          data && <PrimaryButton onClick={() => downloadXlsx(data)}>Download XLSX</PrimaryButton>
         }
       />
 
@@ -163,6 +181,7 @@ export default function StakingRewards() {
 
       {phase === "done" && data && (
         <>
+          <StatsRow stats={scopeStats(activeTab, data)} />
           <Tabs
             tabs={tabs}
             active={activeTab}
