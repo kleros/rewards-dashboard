@@ -1,0 +1,32 @@
+# Build in-repo (not just UI-configured) so a freshly linked site always runs
+# the Vite build that generates the published manifest files — without it, the
+# SPA fallback would serve index.html at those paths with a 200.
+[build]
+  command = "yarn build"
+  publish = "dist"
+
+# Every reward-program index (src/assets/<program>-index.json) is published at
+# /<program>.json by the viteStaticCopy target in vite.config.ts (mirrors
+# court's /snapshots.json). They are meant to be read by external consumers, so
+# the whole family gets permissive CORS via one wildcard rule — per current
+# Netlify docs, header `for` patterns allow a wildcard within a segment, unlike
+# redirect splats. (If a deploy ever shows the header missing, fall back to one
+# [[headers]] block per manifest file.) All matched files are public data; the
+# app's own hashed bundles live under /assets/ and are unaffected.
+[[headers]]
+  for = "/*.json"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    # Mutable manifests (a new month is appended per deploy): revalidate every
+    # time so appended months are visible immediately. Netlify also invalidates
+    # its edge cache on each deploy, so no long max-age is wanted here.
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# SPA fallback for react-router BrowserRouter deep links. Deliberately UNFORCED
+# (no `force`/`!`): Netlify serves an existing static file before applying an
+# unforced rewrite ("file shadowing"), so real files like /curate-rewards.json
+# are served verbatim and only unknown paths fall through to the app shell.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

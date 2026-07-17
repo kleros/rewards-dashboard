@@ -153,6 +153,8 @@ Two hosting patterns, both in use today:
 
 Start bundled; move to a live endpoint once your publishing cadence is established.
 
+**Re-publishing your bundled index as a static endpoint — automatic.** If you bundle the index, exposing it by URL (so other projects can consume it, the way Curate publishes `/curate-rewards.json`) requires **no code**: name your file `src/assets/<program>-index.json` and the `viteStaticCopy` convention in [vite.config.ts](../vite.config.ts) publishes it at `/<program>.json`, validated by the shared [scripts/validate-rewards-index.ts](../scripts/validate-rewards-index.ts) (https URLs ending in `<program>-YYYY-MM.json`, strictly ascending months — a violation fails the build). It works live in a running dev server too — adding the file serves the endpoint within seconds, no restart (one dev-only edge: *deleting* a manifest mid-session keeps its stale entry until the dev server restarts). The Netlify wildcard header rule in [netlify.toml](../netlify.toml) already gives every published `/*.json` manifest CORS and the right cache policy. If your program's snapshot filenames can't follow the `<program>-YYYY-MM.json` shape, extend the validator rather than bypassing it.
+
 ---
 
 ## Step 4 — Write the data hook
