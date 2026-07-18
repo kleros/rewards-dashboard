@@ -1,6 +1,8 @@
 import { NavLink, Link, Outlet } from "react-router-dom";
 import styled from "styled-components";
 
+import logoUrl from "assets/logo.svg";
+
 const Container = styled.div`
   min-height: 100vh;
   display: flex;
@@ -42,6 +44,11 @@ const Brand = styled(Link)`
     font-size: 12px;
     color: ${({ theme }) => theme.lavenderPurple};
   }
+`;
+
+const Logo = styled.img`
+  height: 20px;
+  align-self: center;
 `;
 
 const Nav = styled.nav`
@@ -129,7 +136,7 @@ export default function Layout({ themeName, toggleTheme }: LayoutProps) {
       <Header>
         <HeaderContent>
           <Brand to="/">
-            ⚖️ Kleros Rewards <small>Dashboard</small>
+            <Logo src={logoUrl} alt="" /> Kleros Rewards <small>Dashboard</small>
           </Brand>
           <Nav>
             <StyledNavLink to="/staking-rewards">Staking Rewards</StyledNavLink>
