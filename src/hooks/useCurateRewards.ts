@@ -21,9 +21,19 @@ export interface CurateRecipient {
   total?: string;
 }
 
+// Number of rewarded entries per category, published in amended snapshots
+// (2026-07-20). null = not recoverable from the tracking records.
+export interface CurateEntryCounts {
+  submissions?: number | null;
+  removals?: number | null;
+  atq?: number | null;
+  total?: number | null;
+}
+
 export interface CurateSnapshot {
   period?: { label?: string };
   totals?: { submissions?: string; removals?: string; atq?: string; total?: string };
+  entryCounts?: CurateEntryCounts;
   recipients?: Record<string, CurateRecipient>;
 }
 

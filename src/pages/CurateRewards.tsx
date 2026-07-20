@@ -134,11 +134,32 @@ function grandRows(data: CurateData): Row[] {
   return Object.entries(data.grandTotals).map(([addr, totals]) => ({ addr, ...totals }));
 }
 
+// Prefer the published entryCounts (amended snapshots, 2026-07-20). For
+// snapshots without it, fall back to counting itemized reward lines — but
+// aggregate lump lines (empty registry/tagAddress) are not entries, so any
+// snapshot containing one reports null rather than a misleading line count.
+function countEntries(snapshot: CurateSnapshot): number | null {
+  const published = snapshot.entryCounts?.total;
+  if (typeof published === "number" && Number.isFinite(published)) return published;
+  if (snapshot.entryCounts) return null;
+  let count = 0;
+  for (const recipient of Object.values(snapshot.recipients ?? {})) {
+    for (const lines of [recipient.submissions, recipient.removals, recipient.atq]) {
+      for (const line of lines ?? []) {
+        if (!line.registry && !line.tagAddress) return null;
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 function monthlyRows(data: CurateData): Row[] {
   return data.periods.map(({ label, snapshot }) => {
     const totals = snapshot.totals ?? {};
     return {
       month: label,
+      entries: BigInt(countEntries(snapshot) ?? -1),
       submissions: toWei(totals.submissions),
       removals: toWei(totals.removals),
       atq: toWei(totals.atq),
@@ -148,7 +169,15 @@ function monthlyRows(data: CurateData): Row[] {
 }
 
 function scopeStats(tab: string, data: CurateData): Stat[] {
-  let stats: { first: Stat; recipients: number; submissions: bigint; removals: bigint; atq: bigint; total: bigint };
+  let stats: {
+    first: Stat;
+    recipients: number;
+    entries?: number | null;
+    submissions: bigint;
+    removals: bigint;
+    atq: bigint;
+    total: bigint;
+  };
   if (tab === SUMMARY || tab === MONTHLY) {
     let submissions = 0n;
     let removals = 0n;
@@ -172,6 +201,7 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
     stats = {
       first: { label: "Period", value: tab },
       recipients: Object.keys(snapshot.recipients ?? {}).length,
+      entries: countEntries(snapshot),
       submissions: toWei(totals.submissions),
       removals: toWei(totals.removals),
       atq: toWei(totals.atq),
@@ -181,6 +211,9 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
   return [
     stats.first,
     { label: "Recipients", value: stats.recipients.toLocaleString() },
+    ...(stats.entries === undefined
+      ? []
+      : [{ label: "Entries", value: stats.entries === null ? "—" : stats.entries.toLocaleString() }]),
     { label: "Submission rewards", value: `${formatPNK(stats.submissions)} PNK` },
     { label: "Removal rewards", value: `${formatPNK(stats.removals)} PNK` },
     { label: "ATQ rewards", value: `${formatPNK(stats.atq)} PNK` },
@@ -208,6 +241,12 @@ function walletColumns(): Column[] {
 function monthlyColumns(): Column[] {
   return [
     { key: "month", label: "Month", align: "left" },
+    {
+      key: "entries",
+      label: "Entries",
+      align: "right",
+      render: (row) => ((row.entries as bigint) < 0n ? "—" : Number(row.entries).toLocaleString()),
+    },
     { key: "submissions", label: "Submission rewards", align: "right" },
     { key: "removals", label: "Removal rewards", align: "right" },
     { key: "atq", label: "ATQ rewards", align: "right" },
@@ -318,6 +357,7 @@ export default function CurateRewards() {
   function downloadCsv() {
     const header = [
       isMonthly ? "Month" : "Recipient",
+      ...(isMonthly ? ["Entries"] : []),
       "Submissions (PNK)",
       "Removals (PNK)",
       "ATQ (PNK)",
@@ -325,6 +365,7 @@ export default function CurateRewards() {
     ];
     const body = rows.map((row) => [
       String(isMonthly ? row.month : row.addr),
+      ...(isMonthly ? [(row.entries as bigint) < 0n ? "" : String(row.entries)] : []),
       formatPNK(row.submissions as bigint),
       formatPNK(row.removals as bigint),
       formatPNK(row.atq as bigint),
