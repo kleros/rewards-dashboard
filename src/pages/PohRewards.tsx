@@ -245,7 +245,7 @@ export default function PohRewards() {
     <div>
       <PageHeader
         title="Proof of Humanity Rewards"
-        description="A fixed 1,200 PNK airdrop claimed once per registered human in Proof of Humanity v2, paid on-chain on Gnosis through the PnkRewardDistributer since January 2026."
+        description="PNK airdrop claimed once per registered human in Proof of Humanity v2, paid on-chain on Gnosis through the PnkRewardDistributer since January 2026."
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
