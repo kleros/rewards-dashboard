@@ -141,6 +141,7 @@ export default function Layout({ themeName, toggleTheme }: LayoutProps) {
           <Nav>
             <StyledNavLink to="/staking-rewards">Staking Rewards</StyledNavLink>
             <StyledNavLink to="/curate-rewards">Curate Rewards</StyledNavLink>
+            <StyledNavLink to="/poh-rewards">Proof of Humanity Rewards</StyledNavLink>
             <ThemeButton onClick={toggleTheme} title="Toggle theme">
               {themeName === "dark" ? "☀" : "☾"}
             </ThemeButton>
@@ -152,7 +153,7 @@ export default function Layout({ themeName, toggleTheme }: LayoutProps) {
       </Main>
       <Footer>
         <FooterContent>
-          <span>Reward data is fetched from IPFS snapshots published by Kleros.</span>
+          <span>Reward data is fetched from IPFS snapshots and subgraphs published by Kleros.</span>
           <span>
             <a href="https://kleros.io" target="_blank" rel="noreferrer">
               kleros.io

@@ -6,6 +6,7 @@ Live sections:
 
 - **Staking Rewards** — monthly PNK rewards for jurors staking in Kleros Court (Ethereum Mainnet + Gnosis, since January 2021). Ported from the standalone page in [kleros/court](https://github.com/kleros/court/blob/master/public/staking-rewards.html).
 - **Curate Rewards** — monthly PNK rewards for submissions, removals and ATQ across the Address Tags, Tokens and Domains registries. Ported from [kleros/gtcr#387](https://github.com/kleros/gtcr/pull/387).
+- **Proof of Humanity Rewards** — PNK airdrop claimed once per registered human in Proof of Humanity v2 (Gnosis, since January 2026). Derived from the PoH v2 subgraph's `RewardClaim` entities (see [Proof-Of-Humanity/proof-of-humanity-v2-web](https://github.com/Proof-Of-Humanity/proof-of-humanity-v2-web) — the `PnkRewardDistributer` integration).
 
 ## Stack
 
@@ -24,10 +25,11 @@ yarn check-types  # typecheck only
 
 ## How the data works
 
-All reward data lives in JSON snapshots on IPFS; the app fetches them client-side (through `https://cdn.kleros.link/ipfs/`) and aggregates in the browser. Where the snapshot lists come from:
+Staking and Curate data live in JSON snapshots on IPFS; the app fetches them client-side (through `https://cdn.kleros.link/ipfs/`) and aggregates in the browser. Proof of Humanity needs no snapshots at all — it is fetched live from its subgraph on page load. Where each section's data comes from:
 
 - **Staking** — fetched live from `https://court.kleros.io/snapshots.json` (merkle-drop snapshot paths per chain; `"1"` = Mainnet, `"100"` = Gnosis). New months appear automatically with no changes to this repo; if the endpoint is unreachable the page shows an error state with Retry (there is no bundled fallback).
 - **Curate** — `src/assets/curate-rewards-index.json`, a checked-in list of monthly snapshot URLs produced by the curate reward calculator (`--mode document`). To pick up a newly published month, add its URL to that file — it ships in the app bundle *and* is auto-published at `/curate-rewards.json` (see below).
+- **Proof of Humanity** — fetched live from the PoH v2 Gnosis subgraph on page load. Every payout is an immutable `RewardClaim` whose `id` is the humanityID (one claim per registered human), monthly tables are aggregated client-side in `src/hooks/usePohRewards.ts`. No snapshot files, index, or pinning: new claims appear automatically; if the subgraph is unreachable the page shows an error state with Retry.
 
 ### Public index endpoints
 

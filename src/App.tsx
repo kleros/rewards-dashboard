@@ -5,6 +5,7 @@ import { ThemeProvider } from "styled-components";
 import Layout from "components/Layout";
 import CurateRewards from "pages/CurateRewards";
 import Home from "pages/Home";
+import PohRewards from "pages/PohRewards";
 import StakingRewards from "pages/StakingRewards";
 import { GlobalStyle } from "styles/global";
 import { darkTheme, lightTheme } from "styles/themes";
@@ -36,6 +37,7 @@ export default function App() {
             <Route index element={<Home />} />
             <Route path="staking-rewards" element={<StakingRewards />} />
             <Route path="curate-rewards" element={<CurateRewards />} />
+            <Route path="poh-rewards" element={<PohRewards />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
