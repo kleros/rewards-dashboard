@@ -6,28 +6,21 @@ import { toWei } from "utils/format";
 // Live data source: the Proof of Humanity v2 Gnosis subgraph. Every payout of
 // the fixed PNK airdrop is indexed as an immutable `RewardClaim` whose `id` is
 // the humanityID (one claim per registered human), so the whole history is
-// small and cheap to fetch straight from the subgraph on page load — no
-// snapshot files or IPFS pinning. The gateway URL embeds an API key, so it is
-// read from an env var rather than hard-coded (see .env.example).
+// small and cheap to fetch straight from the subgraph on page load
 const SUBGRAPH_URL: string | undefined = import.meta.env.VITE_GNOSIS_SUBGRAPH_URL;
 
-// The Graph caps the `first` argument at 1000 rows per request, so this is both
-// the page size and the largest page we can ever ask for.
 const MAX_PAGE_SIZE = 1000;
 
-// Retry transient network/subgraph failures a few times before giving up.
 const MAX_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 1000;
 
-// One wallet's airdrop reward.
 export interface PohReward {
-  address: string; // lowercased claimer wallet
+  address: string;
   humanityId: string;
   amount: bigint;
   claimedAt: string; // ISO 8601
 }
 
-// One month of the program, newest-first in PohData.months.
 export interface PohMonth {
   label: string; // YYYY-MM
   total: bigint;
@@ -35,8 +28,8 @@ export interface PohMonth {
 }
 
 export interface PohData {
-  months: PohMonth[]; // newest first
-  recipients: PohReward[]; // all-time, one per wallet
+  months: PohMonth[];
+  recipients: PohReward[];
 }
 
 // One reward-claim row as returned by the subgraph. `id` is the humanityID;
@@ -59,9 +52,7 @@ const CLAIMS_QUERY = `query Claims($lastId: ID!, $first: Int!) {
 
 const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-// POST a GraphQL query to the subgraph, retrying transient failures with a
-// linear backoff. Throws (rather than returning partial data) so the caller can
-// show the error state with a Retry.
+
 async function querySubgraph<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   if (!SUBGRAPH_URL) {
     throw new Error("VITE_GNOSIS_SUBGRAPH_URL is not set");
@@ -92,7 +83,7 @@ async function querySubgraph<T>(query: string, variables: Record<string, unknown
 
 // Fetch every reward claim by paging through the subgraph. We cursor on `id`
 // (the humanityID) rather than a numeric `skip` offset: `id` is the unique
-// primary key with a deterministic byte-lexicographic order, so `id_gt` paging
+// primary key with a deterministic and lexicographic order, so `id_gt` paging
 // can never skip or double-count a row even while new claims are still being
 // indexed — and it has no upper bound, whereas `skip` breaks past 5000 rows.
 async function fetchAllClaims(
