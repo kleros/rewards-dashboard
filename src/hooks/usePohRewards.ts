@@ -7,7 +7,7 @@ import { toWei } from "utils/format";
 // the fixed PNK airdrop is indexed as an immutable `RewardClaim` whose `id` is
 // the humanityID (one claim per registered human), so the whole history is
 // small and cheap to fetch straight from the subgraph on page load
-const SUBGRAPH_URL: string | undefined = import.meta.env.VITE_GNOSIS_SUBGRAPH_URL;
+const SUBGRAPH_URL: string | undefined = import.meta.env.VITE_POH_GNOSIS_SUBGRAPH_URL;
 
 const MAX_PAGE_SIZE = 1000;
 
@@ -55,7 +55,7 @@ const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(reso
 
 async function querySubgraph<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   if (!SUBGRAPH_URL) {
-    throw new Error("VITE_GNOSIS_SUBGRAPH_URL is not set");
+    throw new Error("VITE_POH_GNOSIS_SUBGRAPH_URL is not set");
   }
 
   let lastError: unknown;
