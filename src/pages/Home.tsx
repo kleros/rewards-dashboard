@@ -95,6 +95,13 @@ const SECTIONS = [
     description:
       "Monthly PNK rewards for submissions, removals and ATQ across the Address Tags, Tokens and Domains registries, distributed on Gnosis since April 2022.",
   },
+  {
+    to: "/poh-rewards",
+    eyebrow: "Proof of Humanity program",
+    title: "Proof of Humanity Rewards",
+    description:
+      "PNK airdrop claimed once per registered human in Proof of Humanity, distributed on Gnosis since January 2026.",
+  },
 ];
 
 export default function Home() {

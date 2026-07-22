@@ -6,6 +6,17 @@ import ErrorState from "components/ErrorState";
 import FetchProgress from "components/FetchProgress";
 import PageHeader from "components/PageHeader";
 import RewardsTable, { Column, Mono, Row } from "components/RewardsTable";
+import {
+  BackRow,
+  DetailCard,
+  DetailHead,
+  Foot,
+  GrandTotal,
+  LinesTable,
+  MutedLabel,
+  NumCell,
+  PeriodBlock,
+} from "components/rewardStyles";
 import StatsRow, { Stat } from "components/StatsRow";
 import Tabs from "components/Tabs";
 import {
@@ -21,75 +32,6 @@ import { downloadBlob, formatPNK, shortAddress, toCsv, toWei } from "utils/forma
 const SUMMARY = "Summary";
 const MONTHLY = "Monthly Totals";
 
-const Foot = styled.div`
-  margin-top: 16px;
-  color: ${({ theme }) => theme.secondaryText};
-  font-size: 12px;
-`;
-
-const DetailCard = styled.div`
-  background: ${({ theme }) => theme.whiteBackground};
-  border: 1px solid ${({ theme }) => theme.stroke};
-  border-radius: 12px;
-  overflow: hidden;
-`;
-
-const DetailHead = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 16px;
-  border-bottom: 1px solid ${({ theme }) => theme.stroke};
-`;
-
-const MutedLabel = styled.div`
-  color: ${({ theme }) => theme.secondaryText};
-  font-size: 12px;
-`;
-
-const GrandTotal = styled.div`
-  font-size: 20px;
-  font-weight: 700;
-`;
-
-const PeriodBlock = styled.div`
-  padding: 6px 16px 14px;
-
-  h4 {
-    margin: 14px 0 6px;
-    font-size: 13px;
-    color: ${({ theme }) => theme.secondaryText};
-  }
-`;
-
-const LinesTable = styled.table`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-
-  td {
-    padding: 7px 10px 7px 0;
-    border-bottom: 1px solid ${({ theme }) => theme.stroke};
-    white-space: nowrap;
-    transition: background 0.12s ease;
-  }
-
-  tr:hover td {
-    background: ${({ theme }) => theme.hoverBackground};
-  }
-
-  tr:last-child td {
-    border-bottom: none;
-  }
-`;
-
-const NumCell = styled.td`
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-`;
-
 const Pill = styled.span<{ $kind: "sub" | "rem" | "atq" }>`
   display: inline-block;
   padding: 1px 9px;
@@ -102,9 +44,6 @@ const Pill = styled.span<{ $kind: "sub" | "rem" | "atq" }>`
     `${$kind === "sub" ? theme.primaryBlue : $kind === "rem" ? theme.tint : theme.secondaryPurple}22`};
 `;
 
-const BackRow = styled.div`
-  margin-bottom: 14px;
-`;
 
 function registryLabel(registry: string | undefined): string {
   switch (registry) {
