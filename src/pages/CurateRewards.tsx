@@ -77,13 +77,15 @@ function grandRows(data: CurateData): Row[] {
 // snapshots without it, fall back to counting itemized reward lines — but
 // aggregate lump lines (empty registry/tagAddress) are not entries, so any
 // snapshot containing one reports null rather than a misleading line count.
-function countEntries(snapshot: CurateSnapshot): number | null {
-  const published = snapshot.entryCounts?.total;
+function countEntries(snapshot: CurateSnapshot, category: "total" | "submissions" = "total"): number | null {
+  const published = snapshot.entryCounts?.[category];
   if (typeof published === "number" && Number.isFinite(published)) return published;
   if (snapshot.entryCounts) return null;
   let count = 0;
   for (const recipient of Object.values(snapshot.recipients ?? {})) {
-    for (const lines of [recipient.submissions, recipient.removals, recipient.atq]) {
+    const categories =
+      category === "total" ? [recipient.submissions, recipient.removals, recipient.atq] : [recipient.submissions];
+    for (const lines of categories) {
       for (const line of lines ?? []) {
         if (!line.registry && !line.tagAddress) return null;
         count++;
@@ -93,13 +95,19 @@ function countEntries(snapshot: CurateSnapshot): number | null {
   return count;
 }
 
+function avgWei(total: bigint, count: number | null): bigint | null {
+  return count && count > 0 ? total / BigInt(count) : null;
+}
+
 function monthlyRows(data: CurateData): Row[] {
   return data.periods.map(({ label, snapshot }) => {
     const totals = snapshot.totals ?? {};
+    const submissions = toWei(totals.submissions);
     return {
       month: label,
       entries: BigInt(countEntries(snapshot) ?? -1),
-      submissions: toWei(totals.submissions),
+      submissions,
+      avgSubmission: avgWei(submissions, countEntries(snapshot, "submissions")) ?? -1n,
       removals: toWei(totals.removals),
       atq: toWei(totals.atq),
       total: toWei(totals.total),
@@ -113,6 +121,7 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
     recipients: number;
     entries?: number | null;
     submissions: bigint;
+    avgSubmission: bigint | null;
     removals: bigint;
     atq: bigint;
     total: bigint;
@@ -126,10 +135,22 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
       removals += g.removals;
       atq += g.atq;
     }
+    // The all-time average is only honest if every period's denominator is
+    // known; a single unrecoverable count degrades it to "—".
+    let submissionCount: number | null = 0;
+    for (const { snapshot } of data.periods) {
+      const count = countEntries(snapshot, "submissions");
+      if (count === null) {
+        submissionCount = null;
+        break;
+      }
+      submissionCount += count;
+    }
     stats = {
       first: { label: "Periods", value: String(data.periods.length) },
       recipients: Object.keys(data.grandTotals).length,
       submissions,
+      avgSubmission: avgWei(submissions, submissionCount),
       removals,
       atq,
       total: submissions + removals + atq,
@@ -137,26 +158,34 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
   } else {
     const snapshot = data.periods.find((p) => p.label === tab)?.snapshot ?? {};
     const totals = snapshot.totals ?? {};
+    const submissions = toWei(totals.submissions);
     stats = {
       first: { label: "Period", value: tab },
       recipients: Object.keys(snapshot.recipients ?? {}).length,
       entries: countEntries(snapshot),
-      submissions: toWei(totals.submissions),
+      submissions,
+      avgSubmission: avgWei(submissions, countEntries(snapshot, "submissions")),
       removals: toWei(totals.removals),
       atq: toWei(totals.atq),
       total: toWei(totals.total),
     };
   }
+  // Context (ending on the headline total) before the per-category breakdown,
+  // so the total never lands in a trailing wrap row.
   return [
     stats.first,
     { label: "Recipients", value: stats.recipients.toLocaleString() },
     ...(stats.entries === undefined
       ? []
       : [{ label: "Entries", value: stats.entries === null ? "—" : stats.entries.toLocaleString() }]),
+    { label: "Total distributed", value: `${formatPNK(stats.total)} PNK` },
     { label: "Submission rewards", value: `${formatPNK(stats.submissions)} PNK` },
+    {
+      label: "Avg reward per submission",
+      value: stats.avgSubmission === null ? "—" : `${formatPNK(stats.avgSubmission)} PNK`,
+    },
     { label: "Removal rewards", value: `${formatPNK(stats.removals)} PNK` },
     { label: "ATQ rewards", value: `${formatPNK(stats.atq)} PNK` },
-    { label: "Total distributed", value: `${formatPNK(stats.total)} PNK` },
   ];
 }
 
@@ -187,6 +216,12 @@ function monthlyColumns(): Column[] {
       render: (row) => ((row.entries as bigint) < 0n ? "—" : Number(row.entries).toLocaleString()),
     },
     { key: "submissions", label: "Submission rewards", align: "right" },
+    {
+      key: "avgSubmission",
+      label: "Avg reward / submission",
+      align: "right",
+      render: (row) => ((row.avgSubmission as bigint) < 0n ? "—" : formatPNK(row.avgSubmission as bigint)),
+    },
     { key: "removals", label: "Removal rewards", align: "right" },
     { key: "atq", label: "ATQ rewards", align: "right" },
     { key: "total", label: "Total (PNK)", align: "right" },
@@ -298,6 +333,7 @@ export default function CurateRewards() {
       isMonthly ? "Month" : "Recipient",
       ...(isMonthly ? ["Entries"] : []),
       "Submissions (PNK)",
+      ...(isMonthly ? ["Avg reward per submission (PNK)"] : []),
       "Removals (PNK)",
       "ATQ (PNK)",
       "Total (PNK)",
@@ -306,6 +342,9 @@ export default function CurateRewards() {
       String(isMonthly ? row.month : row.addr),
       ...(isMonthly ? [(row.entries as bigint) < 0n ? "" : String(row.entries)] : []),
       formatPNK(row.submissions as bigint),
+      ...(isMonthly
+        ? [(row.avgSubmission as bigint) < 0n ? "" : formatPNK(row.avgSubmission as bigint)]
+        : []),
       formatPNK(row.removals as bigint),
       formatPNK(row.atq as bigint),
       formatPNK(row.total as bigint),

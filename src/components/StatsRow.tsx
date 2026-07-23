@@ -1,14 +1,15 @@
 import styled from "styled-components";
 
 const Row = styled.div`
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
   margin-bottom: 22px;
 `;
 
 const Card = styled.div`
-  flex: 1 1 160px;
+  display: flex;
+  flex-direction: column;
   background: ${({ theme }) => theme.whiteBackground};
   border: 1px solid ${({ theme }) => theme.stroke};
   border-radius: 12px;
@@ -25,7 +26,10 @@ const K = styled.div`
 const V = styled.div`
   font-size: 19px;
   font-weight: 700;
-  margin-top: 4px;
+  /* Pin values to the card bottom so a two-line label doesn't break the
+     baseline shared with sibling cards. */
+  margin-top: auto;
+  padding-top: 4px;
   white-space: nowrap;
 `;
 
