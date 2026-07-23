@@ -77,14 +77,21 @@ function grandRows(data: CurateData): Row[] {
 // snapshots without it, fall back to counting itemized reward lines — but
 // aggregate lump lines (empty registry/tagAddress) are not entries, so any
 // snapshot containing one reports null rather than a misleading line count.
-function countEntries(snapshot: CurateSnapshot, category: "total" | "submissions" = "total"): number | null {
+function countEntries(
+  snapshot: CurateSnapshot,
+  category: "total" | "submissions" | "removals" = "total"
+): number | null {
   const published = snapshot.entryCounts?.[category];
   if (typeof published === "number" && Number.isFinite(published)) return published;
   if (snapshot.entryCounts) return null;
   let count = 0;
   for (const recipient of Object.values(snapshot.recipients ?? {})) {
     const categories =
-      category === "total" ? [recipient.submissions, recipient.removals, recipient.atq] : [recipient.submissions];
+      category === "total"
+        ? [recipient.submissions, recipient.removals, recipient.atq]
+        : category === "submissions"
+          ? [recipient.submissions]
+          : [recipient.removals];
     for (const lines of categories) {
       for (const line of lines ?? []) {
         if (!line.registry && !line.tagAddress) return null;
@@ -123,6 +130,7 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
     submissions: bigint;
     avgSubmission: bigint | null;
     removals: bigint;
+    avgRemoval: bigint | null;
     atq: bigint;
     total: bigint;
   };
@@ -135,16 +143,15 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
       removals += g.removals;
       atq += g.atq;
     }
-    // The all-time average is only honest if every period's denominator is
-    // known; a single unrecoverable count degrades it to "—".
+    // The all-time averages are only honest if every period's denominator is
+    // known; a single unrecoverable count degrades them to "—"/hidden.
     let submissionCount: number | null = 0;
+    let removalCount: number | null = 0;
     for (const { snapshot } of data.periods) {
-      const count = countEntries(snapshot, "submissions");
-      if (count === null) {
-        submissionCount = null;
-        break;
-      }
-      submissionCount += count;
+      const subs = countEntries(snapshot, "submissions");
+      const rems = countEntries(snapshot, "removals");
+      if (submissionCount !== null) submissionCount = subs === null ? null : submissionCount + subs;
+      if (removalCount !== null) removalCount = rems === null ? null : removalCount + rems;
     }
     stats = {
       first: { label: "Periods", value: String(data.periods.length) },
@@ -152,6 +159,7 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
       submissions,
       avgSubmission: avgWei(submissions, submissionCount),
       removals,
+      avgRemoval: avgWei(removals, removalCount),
       atq,
       total: submissions + removals + atq,
     };
@@ -166,6 +174,7 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
       submissions,
       avgSubmission: avgWei(submissions, countEntries(snapshot, "submissions")),
       removals: toWei(totals.removals),
+      avgRemoval: avgWei(toWei(totals.removals), countEntries(snapshot, "removals")),
       atq: toWei(totals.atq),
       total: toWei(totals.total),
     };
@@ -185,6 +194,11 @@ function scopeStats(tab: string, data: CurateData): Stat[] {
       value: stats.avgSubmission === null ? "—" : `${formatPNK(stats.avgSubmission)} PNK`,
     },
     { label: "Removal rewards", value: `${formatPNK(stats.removals)} PNK` },
+    // Removals only exist since 2025-08 — hide the average (rather than
+    // showing "—") for the many periods where there is nothing to average.
+    ...(stats.avgRemoval === null
+      ? []
+      : [{ label: "Avg reward per removal", value: `${formatPNK(stats.avgRemoval)} PNK` }]),
     { label: "ATQ rewards", value: `${formatPNK(stats.atq)} PNK` },
   ];
 }
