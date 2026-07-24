@@ -122,85 +122,107 @@ function monthlyRows(data: CurateData): Row[] {
   });
 }
 
-function scopeStats(tab: string, data: CurateData): Stat[] {
-  let stats: {
-    first: Stat;
-    recipients: number;
-    entries?: number | null;
-    submissions: bigint;
-    avgSubmission: bigint | null;
-    removals: bigint;
-    avgRemoval: bigint | null;
-    atq: bigint;
-    total: bigint;
+// Per-category rewards and averages — the second stats row in every scope.
+function breakdownStats(s: {
+  submissions: bigint;
+  avgSubmission: bigint | null;
+  removals: bigint;
+  avgRemoval: bigint | null;
+  atq: bigint;
+}): Stat[] {
+  return [
+    { label: "Submission rewards", value: `${formatPNK(s.submissions)} PNK` },
+    {
+      label: "Avg reward per submission",
+      value: s.avgSubmission === null ? "—" : `${formatPNK(s.avgSubmission)} PNK`,
+    },
+    { label: "Removal rewards", value: `${formatPNK(s.removals)} PNK` },
+    // Removals only exist since 2025-08 — hide the average (rather than
+    // showing "—") for the many periods where there is nothing to average.
+    ...(s.avgRemoval === null
+      ? []
+      : [{ label: "Avg reward per removal", value: `${formatPNK(s.avgRemoval)} PNK` }]),
+    { label: "ATQ rewards", value: `${formatPNK(s.atq)} PNK` },
+  ];
+}
+
+function summaryStats(data: CurateData): Stat[] {
+  let submissions = 0n;
+  let removals = 0n;
+  let atq = 0n;
+  for (const g of Object.values(data.grandTotals)) {
+    submissions += g.submissions;
+    removals += g.removals;
+    atq += g.atq;
+  }
+  const total = submissions + removals + atq;
+  // The all-time averages are only honest if every period's denominator is
+  // known; a single unrecoverable count degrades them to "—"/hidden.
+  let submissionCount: number | null = 0;
+  let removalCount: number | null = 0;
+  for (const { snapshot } of data.periods) {
+    const subs = countEntries(snapshot, "submissions");
+    const rems = countEntries(snapshot, "removals");
+    if (submissionCount !== null) submissionCount = subs === null ? null : submissionCount + subs;
+    if (removalCount !== null) removalCount = rems === null ? null : removalCount + rems;
+  }
+  // "Months" counts rewarded months, not calendar months (rewards skipped
+  // 2023-07/08). The last-12 card only renders when the newest 12 loaded
+  // periods really are 12 consecutive calendar months — a failed fetch in
+  // that window (or a future index gap) would otherwise silently shift it.
+  const months = data.periods.length;
+  const newest12 = data.periods.slice(0, 12);
+  const monthIndex = (label: string): number | null => {
+    const match = label.match(/^(\d{4})-(\d{2})$/);
+    return match ? Number(match[1]) * 12 + Number(match[2]) : null;
   };
-  if (tab === SUMMARY || tab === MONTHLY) {
-    let submissions = 0n;
-    let removals = 0n;
-    let atq = 0n;
-    for (const g of Object.values(data.grandTotals)) {
-      submissions += g.submissions;
-      removals += g.removals;
-      atq += g.atq;
-    }
-    // The all-time averages are only honest if every period's denominator is
-    // known; a single unrecoverable count degrades them to "—"/hidden.
-    let submissionCount: number | null = 0;
-    let removalCount: number | null = 0;
-    for (const { snapshot } of data.periods) {
-      const subs = countEntries(snapshot, "submissions");
-      const rems = countEntries(snapshot, "removals");
-      if (submissionCount !== null) submissionCount = subs === null ? null : submissionCount + subs;
-      if (removalCount !== null) removalCount = rems === null ? null : removalCount + rems;
-    }
-    stats = {
-      first: { label: "Periods", value: String(data.periods.length) },
-      recipients: Object.keys(data.grandTotals).length,
+  const indexes = newest12.map((p) => monthIndex(p.label));
+  const last12Contiguous =
+    months > 12 &&
+    indexes.every((idx, i) => idx !== null && (i === 0 || (indexes[i - 1] ?? 0) - idx === 1));
+  const last12 = newest12.reduce((sum, { snapshot }) => {
+    for (const r of Object.values(snapshot.recipients ?? {}))
+      sum += sumLines(r.submissions) + sumLines(r.removals) + sumLines(r.atq);
+    return sum;
+  }, 0n);
+  return [
+    { label: "Months", value: String(months) },
+    { label: "Recipients", value: Object.keys(data.grandTotals).length.toLocaleString() },
+    { label: `Total distributed (${months} month${months === 1 ? "" : "s"})`, value: `${formatPNK(total)} PNK` },
+    ...(last12Contiguous ? [{ label: "Total (last 12 months)", value: `${formatPNK(last12)} PNK` }] : []),
+    { label: "Avg per month", value: `${formatPNK(total / BigInt(months))} PNK` },
+    ...breakdownStats({
       submissions,
       avgSubmission: avgWei(submissions, submissionCount),
       removals,
       avgRemoval: avgWei(removals, removalCount),
       atq,
-      total: submissions + removals + atq,
-    };
-  } else {
-    const snapshot = data.periods.find((p) => p.label === tab)?.snapshot ?? {};
-    const totals = snapshot.totals ?? {};
-    const submissions = toWei(totals.submissions);
-    stats = {
-      first: { label: "Period", value: tab },
-      recipients: Object.keys(snapshot.recipients ?? {}).length,
-      entries: countEntries(snapshot),
+    }),
+  ];
+}
+
+function periodStats(tab: string, data: CurateData): Stat[] {
+  const snapshot = data.periods.find((p) => p.label === tab)?.snapshot ?? {};
+  const totals = snapshot.totals ?? {};
+  const submissions = toWei(totals.submissions);
+  const entries = countEntries(snapshot);
+  return [
+    { label: "Month", value: tab },
+    { label: "Recipients", value: Object.keys(snapshot.recipients ?? {}).length.toLocaleString() },
+    { label: "Entries", value: entries === null ? "—" : entries.toLocaleString() },
+    { label: "Total distributed", value: `${formatPNK(toWei(totals.total))} PNK` },
+    ...breakdownStats({
       submissions,
       avgSubmission: avgWei(submissions, countEntries(snapshot, "submissions")),
       removals: toWei(totals.removals),
       avgRemoval: avgWei(toWei(totals.removals), countEntries(snapshot, "removals")),
       atq: toWei(totals.atq),
-      total: toWei(totals.total),
-    };
-  }
-  // Context (ending on the headline total) before the per-category breakdown,
-  // so the total never lands in a trailing wrap row.
-  return [
-    stats.first,
-    { label: "Recipients", value: stats.recipients.toLocaleString() },
-    ...(stats.entries === undefined
-      ? []
-      : [{ label: "Entries", value: stats.entries === null ? "—" : stats.entries.toLocaleString() }]),
-    { label: "Total distributed", value: `${formatPNK(stats.total)} PNK` },
-    { label: "Submission rewards", value: `${formatPNK(stats.submissions)} PNK` },
-    {
-      label: "Avg reward per submission",
-      value: stats.avgSubmission === null ? "—" : `${formatPNK(stats.avgSubmission)} PNK`,
-    },
-    { label: "Removal rewards", value: `${formatPNK(stats.removals)} PNK` },
-    // Removals only exist since 2025-08 — hide the average (rather than
-    // showing "—") for the many periods where there is nothing to average.
-    ...(stats.avgRemoval === null
-      ? []
-      : [{ label: "Avg reward per removal", value: `${formatPNK(stats.avgRemoval)} PNK` }]),
-    { label: "ATQ rewards", value: `${formatPNK(stats.atq)} PNK` },
+    }),
   ];
+}
+
+function scopeStats(tab: string, data: CurateData): Stat[] {
+  return tab === SUMMARY || tab === MONTHLY ? summaryStats(data) : periodStats(tab, data);
 }
 
 function walletColumns(): Column[] {
