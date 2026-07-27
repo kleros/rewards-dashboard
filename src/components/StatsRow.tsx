@@ -30,7 +30,6 @@ const V = styled.div`
      baseline shared with sibling cards. */
   margin-top: auto;
   padding-top: 4px;
-  white-space: nowrap;
 `;
 
 export interface Stat {

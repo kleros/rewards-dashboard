@@ -11,7 +11,7 @@ import RewardsTable, { Column, Row } from "components/RewardsTable";
 import StatsRow, { Stat } from "components/StatsRow";
 import Tabs from "components/Tabs";
 import { StakingData, StakingMonthBucket, useStakingRewards } from "hooks/useStakingRewards";
-import { downloadBlob, formatPNK, toPnkNumber } from "utils/format";
+import { downloadBlob, formatMonthCount, formatPNK, toPnkNumber } from "utils/format";
 
 const MONTHLY = "Monthly Totals";
 const SUMMARY = "Summary";
@@ -31,7 +31,7 @@ function monthTotalRow(label: string, bucket: StakingMonthBucket): Row {
   let gnosis = 0n;
   for (const amount of Object.values(bucket.mainnet)) mainnet += amount;
   for (const amount of Object.values(bucket.gnosis)) gnosis += amount;
-  return { Month: label, "Mainnet PNK": mainnet, "Gnosis PNK": gnosis, "Total PNK": mainnet + gnosis };
+  return { Month: label, "Mainnet (PNK)": mainnet, "Gnosis (PNK)": gnosis, "Total (PNK)": mainnet + gnosis };
 }
 
 function monthWalletRows(bucket: StakingMonthBucket): Row[] {
@@ -39,16 +39,16 @@ function monthWalletRows(bucket: StakingMonthBucket): Row[] {
   return [...addrs].map((addr) => {
     const mainnet = bucket.mainnet[addr] ?? 0n;
     const gnosis = bucket.gnosis[addr] ?? 0n;
-    return { Address: addr, "Mainnet PNK": mainnet, "Gnosis PNK": gnosis, "Total PNK": mainnet + gnosis };
+    return { Recipient: addr, "Mainnet (PNK)": mainnet, "Gnosis (PNK)": gnosis, "Total (PNK)": mainnet + gnosis };
   });
 }
 
 function summaryRows(data: StakingData): Row[] {
   return Object.entries(data.grandTotals).map(([addr, totals]) => ({
-    Address: addr,
-    "Mainnet PNK": totals.mainnet,
-    "Gnosis PNK": totals.gnosis,
-    "Grand Total": totals.mainnet + totals.gnosis,
+    Recipient: addr,
+    "Mainnet (PNK)": totals.mainnet,
+    "Gnosis (PNK)": totals.gnosis,
+    "Total (PNK)": totals.mainnet + totals.gnosis,
   }));
 }
 
@@ -60,7 +60,7 @@ function scopeStats(tab: string, data: StakingData): Stat[] {
   let mainnet = 0n;
   let gnosis = 0n;
   if (tab === MONTHLY || tab === SUMMARY) {
-    first = { label: "Months", value: String(data.months.length) };
+    first = { label: "Months", value: formatMonthCount(data.months.length) };
     recipients = Object.keys(data.grandTotals).length;
     for (const totals of Object.values(data.grandTotals)) {
       mainnet += totals.mainnet;
@@ -88,10 +88,10 @@ function pnkColumns(firstKey: string, lastKey: string): Column[] {
       key: firstKey,
       label: firstKey,
       align: "left",
-      render: firstKey === "Address" ? (row) => <AddressCell address={String(row[firstKey])} /> : undefined,
+      render: firstKey === "Recipient" ? (row) => <AddressCell address={String(row[firstKey])} /> : undefined,
     },
-    { key: "Mainnet PNK", label: "Mainnet PNK", align: "right" },
-    { key: "Gnosis PNK", label: "Gnosis PNK", align: "right" },
+    { key: "Mainnet (PNK)", label: "Mainnet (PNK)", align: "right" },
+    { key: "Gnosis (PNK)", label: "Gnosis (PNK)", align: "right" },
     { key: lastKey, label: lastKey, align: "right" },
   ];
 }
@@ -128,16 +128,16 @@ function downloadXlsx(data: StakingData) {
     }),
     [14, 18, 18, 18]
   );
-  addSheet(wb, "Summary", exportRows(summaryRows(data), "Grand Total"), [44, 20, 20, 20]);
+  addSheet(wb, "Summary", exportRows(summaryRows(data), "Total (PNK)"), [44, 20, 20, 20]);
   for (const label of data.months) {
     const rows = monthWalletRows(data.monthData[label]);
     if (rows.length === 0) continue;
-    addSheet(wb, label, exportRows(rows, "Total PNK"), [44, 18, 18, 18]);
+    addSheet(wb, label, exportRows(rows, "Total (PNK)"), [44, 18, 18, 18]);
   }
   const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   downloadBlob(
     new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-    "kleros_staking_rewards.xlsx"
+    "staking-rewards.xlsx"
   );
 }
 
@@ -155,9 +155,9 @@ export default function StakingRewards() {
   }, [data, activeTab]);
 
   const columns = useMemo(() => {
-    if (activeTab === MONTHLY) return pnkColumns("Month", "Total PNK");
-    if (activeTab === SUMMARY) return pnkColumns("Address", "Grand Total");
-    return pnkColumns("Address", "Total PNK");
+    if (activeTab === MONTHLY) return pnkColumns("Month", "Total (PNK)");
+    if (activeTab === SUMMARY) return pnkColumns("Recipient", "Total (PNK)");
+    return pnkColumns("Recipient", "Total (PNK)");
   }, [activeTab]);
 
   const isMonthly = activeTab === MONTHLY;
@@ -173,10 +173,10 @@ export default function StakingRewards() {
         }
       />
 
-      {phase === "fetching" && <FetchProgress title="Fetching snapshots from IPFS..." progress={progress} />}
+      {phase === "fetching" && <FetchProgress title="Fetching reward data from IPFS..." progress={progress} />}
 
       {phase === "error" && (
-        <ErrorState message={errors[0] ?? "All snapshot fetches failed."} onRetry={retry} />
+        <ErrorState message={errors[0] ?? "Could not load the reward data."} onRetry={retry} />
       )}
 
       {phase === "done" && data && (
@@ -192,7 +192,7 @@ export default function StakingRewards() {
             columns={columns}
             rows={rows}
             defaultSortKey={isMonthly ? "Month" : undefined}
-            noun={isMonthly ? ["month", "months"] : ["address", "addresses"]}
+            noun={isMonthly ? ["month", "months"] : ["recipient", "recipients"]}
             searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
             onRowClick={isMonthly ? (row) => setActiveTab(String(row.Month)) : undefined}
           />

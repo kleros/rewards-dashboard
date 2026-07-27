@@ -20,7 +20,7 @@ import {
 import StatsRow, { Stat } from "components/StatsRow";
 import Tabs from "components/Tabs";
 import { PohData, PohMonth, PohReward, usePohRewards } from "hooks/usePohRewards";
-import { downloadBlob, formatPNK, shortAddress, toCsv } from "utils/format";
+import { downloadBlob, formatMonthCount, formatPNK, shortAddress, toCsv } from "utils/format";
 
 // The two fixed tabs. The remaining tabs are month labels ("2026-07"), which are
 // dynamic strings — so `activeTab` is a string that is either a Tab value or a label.
@@ -76,7 +76,7 @@ function scopeStats(tab: string, data: PohData): Stat[] {
   if (tab === Tab.Summary || tab === Tab.Monthly) {
     const total = data.recipients.reduce((sum, reward) => sum + reward.amount, 0n);
     return [
-      { label: "Periods", value: String(data.months.length) },
+      { label: "Months", value: formatMonthCount(data.months.length) },
       { label: "Humans rewarded", value: data.recipients.length.toLocaleString() },
       { label: "Total distributed", value: `${formatPNK(total)} PNK` },
       { label: "Per claim", value: `${formatPNK(perClaimAmount(total, data.recipients.length))} PNK` },
@@ -86,7 +86,7 @@ function scopeStats(tab: string, data: PohData): Stat[] {
   const total = month?.total ?? 0n;
   const recipientCount = month?.recipients.length ?? 0;
   return [
-    { label: "Period", value: tab },
+    { label: "Month", value: tab },
     { label: "Humans rewarded", value: recipientCount.toLocaleString() },
     { label: "Total distributed", value: `${formatPNK(total)} PNK` },
     { label: "Per claim", value: `${formatPNK(perClaimAmount(total, recipientCount))} PNK` },
@@ -120,7 +120,7 @@ function monthlyColumns(): Column[] {
       align: "right",
       render: (row) => Number(row.recipients).toLocaleString(),
     },
-    { key: "total", label: "PNK distributed", align: "right" },
+    { key: "total", label: "Total (PNK)", align: "right" },
   ];
 }
 
@@ -249,7 +249,7 @@ export default function PohRewards() {
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
-      {phase === "fetching" && <FetchProgress title="Fetching reward claims from the subgraph..." progress={progress} />}
+      {phase === "fetching" && <FetchProgress title="Fetching reward data from the subgraph..." progress={progress} />}
 
       {phase === "error" && <ErrorState message={errors[0] ?? "Could not load the reward data."} onRetry={retry} />}
 
@@ -277,7 +277,7 @@ export default function PohRewards() {
             />
           )}
           <Foot>
-            Data from {data.months.length} period(s), live from the PoH v2 subgraph.{" "}
+            Data from {data.months.length} month(s), live from the PoH v2 subgraph.{" "}
             {isMonthly
               ? "Click a month to open its recipient table."
               : "Click a recipient to see their claim breakdown."}

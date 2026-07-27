@@ -27,7 +27,7 @@ import {
   sumLines,
   useCurateRewards,
 } from "hooks/useCurateRewards";
-import { downloadBlob, formatPNK, shortAddress, toCsv, toWei } from "utils/format";
+import { downloadBlob, formatMonthCount, formatPNK, shortAddress, toCsv, toWei } from "utils/format";
 
 const SUMMARY = "Summary";
 const MONTHLY = "Monthly Totals";
@@ -186,7 +186,7 @@ function summaryStats(data: CurateData): Stat[] {
     return sum;
   }, 0n);
   return [
-    { label: "Months", value: String(months) },
+    { label: "Months", value: formatMonthCount(months) },
     { label: "Recipients", value: Object.keys(data.grandTotals).length.toLocaleString() },
     { label: `Total distributed (${months} month${months === 1 ? "" : "s"})`, value: `${formatPNK(total)} PNK` },
     ...(last12Contiguous ? [{ label: "Total (last 12 months)", value: `${formatPNK(last12)} PNK` }] : []),
@@ -254,7 +254,7 @@ function monthlyColumns(): Column[] {
     { key: "submissions", label: "Submission rewards", align: "right" },
     {
       key: "avgSubmission",
-      label: "Avg reward / submission",
+      label: "Avg reward per submission",
       align: "right",
       render: (row) => ((row.avgSubmission as bigint) < 0n ? "—" : formatPNK(row.avgSubmission as bigint)),
     },
@@ -368,10 +368,10 @@ export default function CurateRewards() {
     const header = [
       isMonthly ? "Month" : "Recipient",
       ...(isMonthly ? ["Entries"] : []),
-      "Submissions (PNK)",
+      "Submission rewards (PNK)",
       ...(isMonthly ? ["Avg reward per submission (PNK)"] : []),
-      "Removals (PNK)",
-      "ATQ (PNK)",
+      "Removal rewards (PNK)",
+      "ATQ rewards (PNK)",
       "Total (PNK)",
     ];
     const body = rows.map((row) => [
@@ -399,9 +399,9 @@ export default function CurateRewards() {
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
-      {phase === "fetching" && <FetchProgress title="Fetching reward periods from IPFS..." progress={progress} />}
+      {phase === "fetching" && <FetchProgress title="Fetching reward data from IPFS..." progress={progress} />}
 
-      {phase === "error" && <ErrorState message={errors[0] ?? "Could not load the reward index."} onRetry={retry} />}
+      {phase === "error" && <ErrorState message={errors[0] ?? "Could not load the reward data."} onRetry={retry} />}
 
       {phase === "done" && data && (
         <>
@@ -429,7 +429,7 @@ export default function CurateRewards() {
             />
           )}
           <Foot>
-            Data from {data.periods.length} period(s)
+            Data from {data.periods.length} month(s)
             {errors.length > 0 ? ` · ${errors.length} snapshot(s) failed to load` : ""}.{" "}
             {isMonthly
               ? "Click a month to open its recipient table."

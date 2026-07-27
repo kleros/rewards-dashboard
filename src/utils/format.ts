@@ -9,6 +9,16 @@ export function formatPNK(wei: bigint): string {
   return `${negative ? "-" : ""}${whole.toLocaleString("en-US")}.${frac.toString().padStart(2, "0")}`;
 }
 
+// Month count with a year breakdown once it reaches a year, e.g. "13 (1 Year and 1 Month)".
+export function formatMonthCount(months: number): string {
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  if (years === 0) return String(months);
+  const parts = [`${years} Year${years === 1 ? "" : "s"}`];
+  if (rest > 0) parts.push(`${rest} Month${rest === 1 ? "" : "s"}`);
+  return `${months} (${parts.join(" and ")})`;
+}
+
 // Wei bigint -> PNK as a plain number rounded to 2 decimals (for spreadsheet exports).
 export function toPnkNumber(wei: bigint): number {
   return Number((wei * 100n) / WEI) / 100;
