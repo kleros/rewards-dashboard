@@ -368,6 +368,11 @@ export default function CurateRewards() {
   const { phase, progress, errors, data, retry } = useCurateRewards();
   const [activeTab, setActiveTab] = useState(MONTHLY);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+  // Search survives tab switches (and the wallet drill-down), held here
+  // because the table remounts per tab. Two states because the semantic
+  // differs: recipient tabs search addresses, Monthly Totals searches months.
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [monthSearch, setMonthSearch] = useState("");
 
   const tabs = useMemo(() => (data ? [MONTHLY, SUMMARY, ...data.periods.map((p) => p.label)] : [MONTHLY, SUMMARY]), [data]);
 
@@ -506,6 +511,8 @@ export default function CurateRewards() {
               defaultSortKey={isMonthly ? "month" : undefined}
               noun={isMonthly ? ["month", "months"] : ["recipient", "recipients"]}
               searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
+              search={isMonthly ? monthSearch : recipientSearch}
+              onSearchChange={isMonthly ? setMonthSearch : setRecipientSearch}
               footer={isMonthly && monthly ? monthly.footer : undefined}
               legend={
                 isMonthly && monthly ? (
