@@ -212,6 +212,11 @@ interface RewardsTableProps {
   footer?: ReactNode[];
   // Optional legend (e.g. the heat-scale key) shown right of the row count.
   legend?: ReactNode;
+  // Controlled search. Pages remount this table per tab (key={activeTab}) to
+  // reset sort and pagination, which would also wipe the typed search — hold
+  // the search in the page and pass it here so it survives tab switches.
+  search?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 export default function RewardsTable({
@@ -223,11 +228,15 @@ export default function RewardsTable({
   defaultSortKey,
   footer,
   legend,
+  search: controlledSearch,
+  onSearchChange,
 }: RewardsTableProps) {
   const lastKey = columns[columns.length - 1].key;
   const [sortKey, setSortKey] = useState(defaultSortKey ?? lastKey);
   const [sortAsc, setSortAsc] = useState(false);
-  const [search, setSearch] = useState("");
+  const [internalSearch, setInternalSearch] = useState("");
+  const search = controlledSearch ?? internalSearch;
+  const setSearch = onSearchChange ?? setInternalSearch;
   const [page, setPage] = useState(0);
 
   const searchKey = columns[0].key;

@@ -187,6 +187,11 @@ export default function StakingRewards() {
   const theme = useTheme();
   const { phase, progress, errors, data, retry } = useStakingRewards();
   const [activeTab, setActiveTab] = useState(MONTHLY);
+  // Search survives tab switches, held here because the table remounts per
+  // tab. Two states because the semantic differs: recipient tabs (Summary and
+  // each month) search addresses, the Monthly Totals tab searches month labels.
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [monthSearch, setMonthSearch] = useState("");
 
   const tabs = useMemo(() => (data ? [MONTHLY, SUMMARY, ...data.months] : [MONTHLY, SUMMARY]), [data]);
 
@@ -272,6 +277,8 @@ export default function StakingRewards() {
             defaultSortKey={isMonthly ? "Month" : undefined}
             noun={isMonthly ? ["distribution", "distributions"] : ["recipient", "recipients"]}
             searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
+            search={isMonthly ? monthSearch : recipientSearch}
+            onSearchChange={isMonthly ? setMonthSearch : setRecipientSearch}
             footer={isMonthly && monthly ? monthly.footer : undefined}
             onRowClick={isMonthly ? (row) => setActiveTab(String(row.Month)) : undefined}
           />
