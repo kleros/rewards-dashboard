@@ -57,6 +57,39 @@ export interface CurateData {
 export const sumLines = (lines: RewardLine[] | undefined): bigint =>
   (lines ?? []).reduce((total, line) => total + toWei(line.amount), 0n);
 
+// Prefer the published entryCounts (amended snapshots, 2026-07-20). For
+// snapshots without it, fall back to counting itemized reward lines — but
+// aggregate lump lines (empty registry/tagAddress) are not entries, so any
+// snapshot containing one reports null rather than a misleading line count.
+export function countEntries(
+  snapshot: CurateSnapshot,
+  category: "total" | "submissions" | "removals" = "total"
+): number | null {
+  const published = snapshot.entryCounts?.[category];
+  if (typeof published === "number" && Number.isFinite(published)) return published;
+  if (snapshot.entryCounts) return null;
+  let count = 0;
+  for (const recipient of Object.values(snapshot.recipients ?? {})) {
+    const categories =
+      category === "total"
+        ? [recipient.submissions, recipient.removals, recipient.atq]
+        : category === "submissions"
+          ? [recipient.submissions]
+          : [recipient.removals];
+    for (const lines of categories) {
+      for (const line of lines ?? []) {
+        if (!line.registry && !line.tagAddress) return null;
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+export function avgWei(total: bigint, count: number | null): bigint | null {
+  return count && count > 0 ? total / BigInt(count) : null;
+}
+
 function labelFor(url: string, snapshot: CurateSnapshot): string {
   if (snapshot.period?.label) return snapshot.period.label;
   const match = url.match(/(\d{4}-\d{2})/);

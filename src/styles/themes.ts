@@ -30,6 +30,14 @@ export const lightTheme = {
   error: "#F5222D",
   errorLight: "#FEF0F3",
   tint: "#9D52D6",
+  // Chart tokens. The three series slots are assigned in fixed order on every
+  // page (slot 1 = primary series) and validated for CVD separation and
+  // contrast against this mode's surface (dataviz six checks, 2026-07-29).
+  seriesA: "#7C50EA",
+  seriesB: "#A06E0E",
+  seriesC: "#0E8A68",
+  chartGrid: "#EFE9F7",
+  mutedText: "#8E7BA8",
 };
 
 export type Theme = typeof lightTheme;
@@ -65,4 +73,9 @@ export const darkTheme: Theme = {
   error: "#FF6B6B",
   errorLight: "#2B1A24",
   tint: "#9D52D6",
+  seriesA: "#8F63F2",
+  seriesB: "#C2871F",
+  seriesC: "#17A17D",
+  chartGrid: "#241F31",
+  mutedText: "#6F6785",
 };

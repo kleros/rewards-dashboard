@@ -9,6 +9,50 @@ export function formatPNK(wei: bigint): string {
   return `${negative ? "-" : ""}${whole.toLocaleString("en-US")}.${frac.toString().padStart(2, "0")}`;
 }
 
+// "1,234,568" style PNK amount from a wei bigint, rounded to whole PNK — for
+// the narrative overview figures, where decimals are noise.
+export function formatPNKWhole(wei: bigint): string {
+  const negative = wei < 0n;
+  const abs = negative ? -wei : wei;
+  const rounded = (abs + WEI / 2n) / WEI;
+  return `${negative ? "-" : ""}${rounded.toLocaleString("en-US")}`;
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// "2026-06" -> "Jun 2026"; the combined "2021-01 & 02" bucket -> "Jan & Feb 2021".
+export function formatMonthLabel(label: string): string {
+  const combined = label.match(/^(\d{4})-(\d{2}) & (\d{2})$/);
+  if (combined) {
+    return `${MONTH_NAMES[Number(combined[2]) - 1]} & ${MONTH_NAMES[Number(combined[3]) - 1]} ${combined[1]}`;
+  }
+  const match = label.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return label;
+  return `${MONTH_NAMES[Number(match[2]) - 1]} ${match[1]}`;
+}
+
+// Inclusive calendar span between two "YYYY-MM" labels, in months (null when
+// either label doesn't parse — e.g. the combined "2021-01 & 02" bucket).
+export function monthSpan(first: string, last: string): number | null {
+  const parse = (label: string) => {
+    const match = label.match(/^(\d{4})-(\d{2})/);
+    return match ? Number(match[1]) * 12 + Number(match[2]) : null;
+  };
+  const a = parse(first);
+  const b = parse(last);
+  return a === null || b === null ? null : Math.abs(b - a) + 1;
+}
+
+// "4 years 1 month" from a month count.
+export function formatDuration(months: number): string {
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  const parts = [];
+  if (years > 0) parts.push(`${years} year${years === 1 ? "" : "s"}`);
+  if (rest > 0 || years === 0) parts.push(`${rest} month${rest === 1 ? "" : "s"}`);
+  return parts.join(" ");
+}
+
 // Month count with a year breakdown once it reaches a year, e.g. "13 (1 Year and 1 Month)".
 export function formatMonthCount(months: number): string {
   const years = Math.floor(months / 12);

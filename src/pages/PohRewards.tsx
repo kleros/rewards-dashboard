@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import styled from "styled-components";
+import styled, { useTheme } from "styled-components";
 
 import { PrimaryButton, SecondaryButton } from "components/Buttons";
 import ErrorState from "components/ErrorState";
 import FetchProgress from "components/FetchProgress";
+import { PohOverview, PohToDate } from "components/overview/PohOverview";
 import PageHeader from "components/PageHeader";
 import RewardsTable, { Column, Mono, Row } from "components/RewardsTable";
+import { BAR_MAX_WIDTH, Bar, BarNum, BarWrap } from "components/TableCells";
 import {
   BackRow,
   DetailCard,
@@ -20,7 +22,16 @@ import {
 import StatsRow, { Stat } from "components/StatsRow";
 import Tabs from "components/Tabs";
 import { PohData, PohMonth, PohReward, usePohRewards } from "hooks/usePohRewards";
-import { downloadBlob, formatMonthCount, formatPNK, shortAddress, toCsv } from "utils/format";
+import {
+  downloadBlob,
+  formatDuration,
+  formatMonthCount,
+  formatPNK,
+  monthSpan,
+  shortAddress,
+  toCsv,
+  toPnkNumber,
+} from "utils/format";
 
 // The two fixed tabs. The remaining tabs are month labels ("2026-07"), which are
 // dynamic strings — so `activeTab` is a string that is either a Tab value or a label.
@@ -111,7 +122,7 @@ function walletColumns(): Column[] {
   ];
 }
 
-function monthlyColumns(): Column[] {
+function monthlyColumns(maxTotal: bigint, barColor: string): Column[] {
   return [
     { key: "month", label: "Month", align: "left" },
     {
@@ -120,7 +131,20 @@ function monthlyColumns(): Column[] {
       align: "right",
       render: (row) => Number(row.recipients).toLocaleString(),
     },
-    { key: "total", label: "Total (PNK)", align: "right" },
+    {
+      key: "total",
+      label: "Total paid",
+      align: "right",
+      render: (row) => (
+        <BarWrap>
+          <Bar
+            $width={maxTotal > 0n ? (toPnkNumber(row.total as bigint) / toPnkNumber(maxTotal)) * BAR_MAX_WIDTH : 0}
+            $color={barColor}
+          />
+          <BarNum>{formatPNK(row.total as bigint)}</BarNum>
+        </BarWrap>
+      ),
+    },
   ];
 }
 
@@ -203,6 +227,7 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
 }
 
 export default function PohRewards() {
+  const theme = useTheme();
   const { phase, progress, errors, data, retry } = usePohRewards();
   const [activeTab, setActiveTab] = useState<string>(Tab.Monthly);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -220,6 +245,27 @@ export default function PohRewards() {
     if (activeTab === Tab.Summary) return rewardRows(data.recipients);
     return rewardRows(data.months.find((month) => month.label === activeTab)?.recipients ?? []);
   }, [data, activeTab, isMonthly]);
+
+  const monthly = useMemo(() => {
+    if (!data || !isMonthly) return null;
+    let maxTotal = 0n;
+    let total = 0n;
+    let humans = 0;
+    for (const row of rows) {
+      const rowTotal = row.total as bigint;
+      total += rowTotal;
+      humans += Number(row.recipients);
+      if (rowTotal > maxTotal) maxTotal = rowTotal;
+    }
+    const footer = [`All ${rows.length} months`, humans.toLocaleString(), formatPNK(total)];
+    return { maxTotal, footer };
+  }, [data, isMonthly, rows]);
+
+  const badge = useMemo(() => {
+    if (!data || data.months.length === 0) return undefined;
+    const span = monthSpan(data.months[data.months.length - 1].label, data.months[0].label);
+    return `${span === null ? "" : `Running ${formatDuration(span)} · `}one claim per human`;
+  }, [data]);
 
   function selectTab(tab: string) {
     setSelectedAddress(null);
@@ -245,7 +291,14 @@ export default function PohRewards() {
     <div>
       <PageHeader
         title="Proof of Humanity Rewards"
-        description="PNK airdrop claimed once per registered human in Proof of Humanity v2, paid on-chain on Gnosis through the PnkRewardDistributer since January 2026."
+        badge={phase === "done" ? badge : undefined}
+        description={
+          <>
+            Proof of Humanity v2 registers <strong>verified humans</strong> on-chain. Each registered human can claim
+            a <strong>PNK airdrop once</strong>, paid on Gnosis through the PnkRewardDistributer since January 2026 —
+            read live from the PoH v2 subgraph.
+          </>
+        }
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
@@ -255,7 +308,7 @@ export default function PohRewards() {
 
       {phase === "done" && data && (
         <>
-          <StatsRow stats={scopeStats(activeTab, data)} />
+          {isMonthly ? <PohOverview data={data} /> : <StatsRow stats={scopeStats(activeTab, data)} />}
           <Tabs tabs={tabs} active={activeTab} onSelect={selectTab} />
           {selectedAddress ? (
             <WalletDetail address={selectedAddress} months={data.months} onBack={() => setSelectedAddress(null)} />
@@ -264,11 +317,12 @@ export default function PohRewards() {
               // Remount on tab change so the table's internal sort, search and
               // page state reset to defaults for each tab.
               key={activeTab}
-              columns={isMonthly ? monthlyColumns() : walletColumns()}
+              columns={isMonthly && monthly ? monthlyColumns(monthly.maxTotal, theme.seriesA) : walletColumns()}
               rows={rows}
               defaultSortKey={isMonthly ? "month" : undefined}
               noun={isMonthly ? ["month", "months"] : ["recipient", "recipients"]}
               searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
+              footer={isMonthly && monthly ? monthly.footer : undefined}
               onRowClick={
                 isMonthly
                   ? (row) => selectTab(String(row.month))
@@ -276,6 +330,7 @@ export default function PohRewards() {
               }
             />
           )}
+          {isMonthly && !selectedAddress && <PohToDate data={data} />}
           <Foot>
             Data from {data.months.length} month(s), live from the PoH v2 subgraph.{" "}
             {isMonthly
