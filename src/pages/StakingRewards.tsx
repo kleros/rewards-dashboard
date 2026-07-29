@@ -19,7 +19,6 @@ import {
   formatMonthsStat,
   formatPNK,
   monthSpan,
-  monthsInLabel,
   toPnkNumber,
 } from "utils/format";
 
@@ -70,15 +69,15 @@ function scopeStats(tab: string, data: StakingData): Stat[] {
   let mainnet = 0n;
   let gnosis = 0n;
   if (tab === MONTHLY || tab === SUMMARY) {
-    // Calendar months covered, not distributions: the first bucket combined
-    // Jan+Feb 2021, so 65 distributions cover 66 months. The label says
-    // "covered" so this card doesn't read as contradicting the badge's
-    // distribution count one number away.
-    const monthsCovered = data.months.reduce((sum, label) => sum + monthsInLabel(label), 0);
+    // Count distributions, not calendar months: the first bucket combined
+    // Jan+Feb 2021, so the two figures differ by one, and every other count
+    // on the page (badge, overview, table footer) is a distribution count —
+    // showing 66 here next to the badge's 65 reads as a typo. The calendar
+    // span goes in the "(over ...)" suffix instead.
     first = {
-      label: "Months covered",
+      label: "Months",
       value: formatMonthsStat(
-        monthsCovered,
+        data.months.length,
         data.months.length > 0 ? monthSpan(data.months[data.months.length - 1], data.months[0]) : null
       ),
     };
