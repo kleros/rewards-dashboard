@@ -5,7 +5,7 @@ import MiniChart from "components/charts/MiniChart";
 import StackedColumnChart, { StackPoint } from "components/charts/StackedColumnChart";
 import { fmtWhole } from "components/charts/utils";
 import { PNK_TOTAL_SUPPLY } from "consts/index";
-import { CurateData, countEntries } from "hooks/useCurateRewards";
+import { CurateData, countEntries, countTotalEntries } from "hooks/useCurateRewards";
 import { formatDuration, formatMonthLabel, formatPNKWhole, monthSpan, toPnkNumber, toWei } from "utils/format";
 
 import {
@@ -44,7 +44,8 @@ import {
 
 interface MonthRow {
   label: string;
-  entries: number | null;
+  entries: number | null; // exact count, or a floor when entriesExact is false
+  entriesExact: boolean;
   subEntries: number | null;
   sub: number;
   rem: number;
@@ -88,9 +89,11 @@ export function useCurateOverview(data: CurateData): CurateOverviewModel {
       const totals = snapshot.totals ?? {};
       const sub = toPnkNumber(toWei(totals.submissions));
       const subEntries = countEntries(snapshot, "submissions");
+      const entryTotal = countTotalEntries(snapshot);
       return {
         label,
-        entries: countEntries(snapshot),
+        entries: entryTotal?.value ?? null,
+        entriesExact: entryTotal?.exact ?? false,
         subEntries,
         sub,
         rem: toPnkNumber(toWei(totals.removals)),
@@ -147,9 +150,9 @@ export function useCurateOverview(data: CurateData): CurateOverviewModel {
       totalWei,
       subWei,
       entriesTotal: known(ascending).reduce((a, b) => a + b, 0),
-      // Some early snapshots can't recover an entry count: the total is then a
-      // floor, and the UI marks it with a trailing "+".
-      entriesTotalIsFloor: ascending.some((r) => r.entries === null),
+      // A month with an unknown or floor count makes the total a floor too,
+      // and the UI marks it with a trailing "+".
+      entriesTotalIsFloor: ascending.some((r) => r.entries === null || !r.entriesExact),
       typicalEntries,
       avgSubLast12,
       volumeMultiple,
@@ -163,6 +166,9 @@ export function useCurateOverview(data: CurateData): CurateOverviewModel {
     };
   }, [data]);
 }
+
+const entriesLabel = (row: { entries: number | null; entriesExact: boolean }): string =>
+  row.entries === null ? "—" : `${row.entries.toLocaleString()}${row.entriesExact ? "" : "+"}`;
 
 export function CurateOverview({ data }: { data: CurateData }) {
   const theme = useTheme();
@@ -181,7 +187,8 @@ export function CurateOverview({ data }: { data: CurateData }) {
   const points: StackPoint[] = m.ascending.map((row) => ({
     label: row.label,
     values: [row.sub, row.atq, row.rem],
-    tipNote: row.entries === null ? undefined : `${row.entries.toLocaleString()} entries`,
+    tipNote:
+      row.entries === null ? undefined : `${row.entries.toLocaleString()}${row.entriesExact ? "" : "+"} entries`,
   }));
 
   return (
@@ -210,7 +217,7 @@ export function CurateOverview({ data }: { data: CurateData }) {
             {latest.entries !== null && (
               <>
                 {" "}
-                to <b>{latest.entries.toLocaleString()}</b> entries
+                to <b>{entriesLabel(latest)}</b> entries
               </>
             )}
           </HeroLatest>
@@ -286,11 +293,15 @@ export function CurateOverview({ data }: { data: CurateData }) {
           <figure>
             <figcaption>Entries accepted each month</figcaption>
             <FigSub>
-              {first.entries === null ? "—" : first.entries.toLocaleString()} in {formatMonthLabel(first.label)} ·{" "}
-              {latest.entries === null ? "—" : latest.entries.toLocaleString()} in {formatMonthLabel(latest.label)}
+              {entriesLabel(first)} in {formatMonthLabel(first.label)} · {entriesLabel(latest)} in{" "}
+              {formatMonthLabel(latest.label)}
             </FigSub>
             <MiniChart
-              points={m.ascending.map((row) => ({ label: row.label, value: row.entries }))}
+              points={m.ascending.map((row) => ({
+                label: row.label,
+                value: row.entries,
+                display: row.entries === null ? undefined : entriesLabel(row),
+              }))}
               kind="column"
               color={theme.seriesA}
               name="Entries"

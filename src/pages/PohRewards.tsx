@@ -25,7 +25,7 @@ import { PohData, PohMonth, PohReward, usePohRewards } from "hooks/usePohRewards
 import {
   downloadBlob,
   formatDuration,
-  formatMonthCount,
+  formatMonthsStat,
   formatPNK,
   monthSpan,
   shortAddress,
@@ -86,8 +86,10 @@ function scopeStats(tab: string, data: PohData): Stat[] {
   // One claim per wallet, so the claim count is just the number of recipients.
   if (tab === Tab.Summary || tab === Tab.Monthly) {
     const total = data.recipients.reduce((sum, reward) => sum + reward.amount, 0n);
+    const span =
+      data.months.length > 0 ? monthSpan(data.months[data.months.length - 1].label, data.months[0].label) : null;
     return [
-      { label: "Months", value: formatMonthCount(data.months.length) },
+      { label: "Months", value: formatMonthsStat(data.months.length, span) },
       { label: "Humans rewarded", value: data.recipients.length.toLocaleString() },
       { label: "Total distributed", value: `${formatPNK(total)} PNK` },
       { label: "Per claim", value: `${formatPNK(perClaimAmount(total, data.recipients.length))} PNK` },

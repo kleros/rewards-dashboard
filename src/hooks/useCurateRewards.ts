@@ -90,6 +90,35 @@ export function avgWei(total: bigint, count: number | null): bigint | null {
   return count && count > 0 ? total / BigInt(count) : null;
 }
 
+// Total rewarded entries with partial knowledge: the published total sums
+// submissions + removals + atq, and a month whose ATQ payment is an aggregate
+// lump (2024-10) publishes atq/total as null while its submission and removal
+// counts are known — the sum of the known categories is then a floor, not an
+// unknown. exact=false marks such floors (rendered with a trailing "+").
+export interface EntryTotal {
+  value: number;
+  exact: boolean;
+}
+
+export function countTotalEntries(snapshot: CurateSnapshot): EntryTotal | null {
+  const counts = snapshot.entryCounts;
+  if (counts) {
+    if (typeof counts.total === "number" && Number.isFinite(counts.total)) {
+      return { value: counts.total, exact: true };
+    }
+    const parts = [counts.submissions, counts.removals, counts.atq];
+    const known = parts.filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+    // A floor is only meaningful with the dominant category (submissions) known;
+    // it is exact when every category is known.
+    if (typeof counts.submissions === "number" && Number.isFinite(counts.submissions)) {
+      return { value: known.reduce((a, b) => a + b, 0), exact: known.length === parts.length };
+    }
+    return null;
+  }
+  const counted = countEntries(snapshot, "total");
+  return counted === null ? null : { value: counted, exact: true };
+}
+
 function labelFor(url: string, snapshot: CurateSnapshot): string {
   if (snapshot.period?.label) return snapshot.period.label;
   const match = url.match(/(\d{4}-\d{2})/);

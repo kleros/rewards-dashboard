@@ -31,6 +31,14 @@ export function formatMonthLabel(label: string): string {
   return `${MONTH_NAMES[Number(match[2]) - 1]} ${match[1]}`;
 }
 
+// How many calendar months a period label covers: 1 for "2021-03", 2 for the
+// combined "2021-01 & 02" bucket. Distribution counts and month counts differ
+// exactly by these multi-month buckets.
+export function monthsInLabel(label: string): number {
+  const combined = label.match(/^(\d{4})-(\d{2}) & (\d{2})$/);
+  return combined ? Number(combined[3]) - Number(combined[2]) + 1 : 1;
+}
+
 // Inclusive calendar span between two "YYYY-MM" labels, in months (null when
 // either label doesn't parse — e.g. the combined "2021-01 & 02" bucket).
 export function monthSpan(first: string, last: string): number | null {
@@ -61,6 +69,15 @@ export function formatMonthCount(months: number): string {
   const parts = [`${years} Year${years === 1 ? "" : "s"}`];
   if (rest > 0) parts.push(`${rest} Month${rest === 1 ? "" : "s"}`);
   return `${months} (${parts.join(" and ")})`;
+}
+
+// The Months stat card. When the number of distributions differs from the
+// calendar span they cover (a skipped month, a combined first bucket), the
+// count is not a duration — say "49 (over 4 years 3 months)" instead of
+// re-expressing the count as years, which would contradict the page badge.
+export function formatMonthsStat(count: number, spanMonths: number | null): string {
+  if (spanMonths === null || spanMonths === count) return formatMonthCount(count);
+  return `${count} (over ${formatDuration(spanMonths)})`;
 }
 
 // Wei bigint -> PNK as a plain number rounded to 2 decimals (for spreadsheet exports).

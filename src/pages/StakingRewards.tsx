@@ -13,7 +13,15 @@ import StatsRow, { Stat } from "components/StatsRow";
 import { BAR_MAX_WIDTH, Bar, BarNum, BarWrap } from "components/TableCells";
 import Tabs from "components/Tabs";
 import { StakingData, StakingMonthBucket, useStakingRewards } from "hooks/useStakingRewards";
-import { downloadBlob, formatDuration, formatMonthCount, formatPNK, monthSpan, toPnkNumber } from "utils/format";
+import {
+  downloadBlob,
+  formatDuration,
+  formatMonthsStat,
+  formatPNK,
+  monthSpan,
+  monthsInLabel,
+  toPnkNumber,
+} from "utils/format";
 
 const MONTHLY = "Monthly Totals";
 const SUMMARY = "Summary";
@@ -62,7 +70,18 @@ function scopeStats(tab: string, data: StakingData): Stat[] {
   let mainnet = 0n;
   let gnosis = 0n;
   if (tab === MONTHLY || tab === SUMMARY) {
-    first = { label: "Months", value: formatMonthCount(data.months.length) };
+    // Calendar months covered, not distributions: the first bucket combined
+    // Jan+Feb 2021, so 65 distributions cover 66 months. The label says
+    // "covered" so this card doesn't read as contradicting the badge's
+    // distribution count one number away.
+    const monthsCovered = data.months.reduce((sum, label) => sum + monthsInLabel(label), 0);
+    first = {
+      label: "Months covered",
+      value: formatMonthsStat(
+        monthsCovered,
+        data.months.length > 0 ? monthSpan(data.months[data.months.length - 1], data.months[0]) : null
+      ),
+    };
     recipients = Object.keys(data.grandTotals).length;
     for (const totals of Object.values(data.grandTotals)) {
       mainnet += totals.mainnet;
@@ -191,8 +210,10 @@ export default function StakingRewards() {
       const total = row["Total (PNK)"] as bigint;
       if (total > maxTotal) maxTotal = total;
     }
+    // "Distributions", not "months": the combined 2021-01 & 02 row is one
+    // distribution covering two calendar months.
     const footer = [
-      `All ${rows.length} months`,
+      `All ${rows.length} distributions`,
       formatPNK(mainnet),
       formatPNK(gnosis),
       formatPNK(mainnet + gnosis),
@@ -249,7 +270,7 @@ export default function StakingRewards() {
             columns={columns}
             rows={rows}
             defaultSortKey={isMonthly ? "Month" : undefined}
-            noun={isMonthly ? ["month", "months"] : ["recipient", "recipients"]}
+            noun={isMonthly ? ["distribution", "distributions"] : ["recipient", "recipients"]}
             searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
             footer={isMonthly && monthly ? monthly.footer : undefined}
             onRowClick={isMonthly ? (row) => setActiveTab(String(row.Month)) : undefined}
