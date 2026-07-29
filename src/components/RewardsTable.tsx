@@ -126,6 +126,29 @@ export const Mono = styled.span`
   font-size: 12px;
 `;
 
+const FootTd = styled.td<{ $align: "left" | "right" }>`
+  text-align: ${({ $align }) => $align};
+  padding: 11px 16px;
+  border-top: 1px solid ${({ theme }) => theme.stroke};
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: ${({ theme }) => theme.primaryText};
+  background: ${({ theme }) => (theme.name === "dark" ? theme.mediumPurple : theme.lightPurple)};
+
+  &:first-child {
+    color: ${({ theme }) => theme.secondaryText};
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+  }
+`;
+
+const LegendSlot = styled.div`
+  margin-left: auto;
+`;
+
 const Empty = styled.div`
   padding: 32px 16px;
   text-align: center;
@@ -185,6 +208,10 @@ interface RewardsTableProps {
   noun?: [singular: string, plural: string];
   onRowClick?: (row: Row) => void;
   defaultSortKey?: string;
+  // Optional all-rows totals row, one cell per column (pre-formatted).
+  footer?: ReactNode[];
+  // Optional legend (e.g. the heat-scale key) shown right of the row count.
+  legend?: ReactNode;
 }
 
 export default function RewardsTable({
@@ -194,6 +221,8 @@ export default function RewardsTable({
   noun = ["address", "addresses"],
   onRowClick,
   defaultSortKey,
+  footer,
+  legend,
 }: RewardsTableProps) {
   const lastKey = columns[columns.length - 1].key;
   const [sortKey, setSortKey] = useState(defaultSortKey ?? lastKey);
@@ -242,6 +271,7 @@ export default function RewardsTable({
         <Count>
           {filtered.length.toLocaleString()} {filtered.length === 1 ? noun[0] : noun[1]}
         </Count>
+        {legend && <LegendSlot>{legend}</LegendSlot>}
       </Controls>
       <Card>
         <Scroll>
@@ -278,6 +308,17 @@ export default function RewardsTable({
                 ))
               )}
             </tbody>
+            {footer && pageRows.length > 0 && (
+              <tfoot>
+                <tr>
+                  {footer.map((cell, i) => (
+                    <FootTd key={columns[i]?.key ?? i} $align={columns[i]?.align ?? "left"}>
+                      {cell}
+                    </FootTd>
+                  ))}
+                </tr>
+              </tfoot>
+            )}
           </Table>
         </Scroll>
         {totalPages > 1 && (

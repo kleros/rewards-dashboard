@@ -1,17 +1,19 @@
 import { useMemo, useState } from "react";
-import styled from "styled-components";
+import styled, { useTheme } from "styled-components";
 import * as XLSX from "xlsx";
 
 import AddressCell from "components/AddressCell";
 import { PrimaryButton } from "components/Buttons";
 import ErrorState from "components/ErrorState";
 import FetchProgress from "components/FetchProgress";
+import { StakingOverview, StakingToDate } from "components/overview/StakingOverview";
 import PageHeader from "components/PageHeader";
 import RewardsTable, { Column, Row } from "components/RewardsTable";
 import StatsRow, { Stat } from "components/StatsRow";
+import { BAR_MAX_WIDTH, Bar, BarNum, BarWrap } from "components/TableCells";
 import Tabs from "components/Tabs";
 import { StakingData, StakingMonthBucket, useStakingRewards } from "hooks/useStakingRewards";
-import { downloadBlob, formatMonthCount, formatPNK, toPnkNumber } from "utils/format";
+import { downloadBlob, formatDuration, formatMonthCount, formatPNK, monthSpan, toPnkNumber } from "utils/format";
 
 const MONTHLY = "Monthly Totals";
 const SUMMARY = "Summary";
@@ -83,6 +85,7 @@ function scopeStats(tab: string, data: StakingData): Stat[] {
 }
 
 function pnkColumns(firstKey: string, lastKey: string): Column[] {
+  const dimZero = (key: string) => (row: Row) => ((row[key] as bigint) === 0n ? "—" : formatPNK(row[key] as bigint));
   return [
     {
       key: firstKey,
@@ -90,10 +93,30 @@ function pnkColumns(firstKey: string, lastKey: string): Column[] {
       align: "left",
       render: firstKey === "Recipient" ? (row) => <AddressCell address={String(row[firstKey])} /> : undefined,
     },
-    { key: "Mainnet (PNK)", label: "Mainnet (PNK)", align: "right" },
-    { key: "Gnosis (PNK)", label: "Gnosis (PNK)", align: "right" },
+    { key: "Mainnet (PNK)", label: "Mainnet (PNK)", align: "right", render: dimZero("Mainnet (PNK)") },
+    { key: "Gnosis (PNK)", label: "Gnosis (PNK)", align: "right", render: dimZero("Gnosis (PNK)") },
     { key: lastKey, label: lastKey, align: "right" },
   ];
+}
+
+// The Monthly Totals tab additionally gets a proportional bar beside the total.
+function monthlyColumns(maxTotal: bigint, barColor: string): Column[] {
+  const columns = pnkColumns("Month", "Total (PNK)");
+  columns[columns.length - 1] = {
+    key: "Total (PNK)",
+    label: "Total paid",
+    align: "right",
+    render: (row) => (
+      <BarWrap>
+        <Bar
+          $width={maxTotal > 0n ? (toPnkNumber(row["Total (PNK)"] as bigint) / toPnkNumber(maxTotal)) * BAR_MAX_WIDTH : 0}
+          $color={barColor}
+        />
+        <BarNum>{formatPNK(row["Total (PNK)"] as bigint)}</BarNum>
+      </BarWrap>
+    ),
+  };
+  return columns;
 }
 
 // XLSX cells hold plain numbers (PNK rounded to 2 decimals), like the original page.
@@ -142,10 +165,13 @@ function downloadXlsx(data: StakingData) {
 }
 
 export default function StakingRewards() {
+  const theme = useTheme();
   const { phase, progress, errors, data, retry } = useStakingRewards();
   const [activeTab, setActiveTab] = useState(MONTHLY);
 
   const tabs = useMemo(() => (data ? [MONTHLY, SUMMARY, ...data.months] : [MONTHLY, SUMMARY]), [data]);
+
+  const isMonthly = activeTab === MONTHLY;
 
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
@@ -154,19 +180,50 @@ export default function StakingRewards() {
     return monthWalletRows(data.monthData[activeTab] ?? { mainnet: {}, gnosis: {} });
   }, [data, activeTab]);
 
-  const columns = useMemo(() => {
-    if (activeTab === MONTHLY) return pnkColumns("Month", "Total (PNK)");
-    if (activeTab === SUMMARY) return pnkColumns("Recipient", "Total (PNK)");
-    return pnkColumns("Recipient", "Total (PNK)");
-  }, [activeTab]);
+  const monthly = useMemo(() => {
+    if (!data || !isMonthly) return null;
+    let mainnet = 0n;
+    let gnosis = 0n;
+    let maxTotal = 0n;
+    for (const row of rows) {
+      mainnet += row["Mainnet (PNK)"] as bigint;
+      gnosis += row["Gnosis (PNK)"] as bigint;
+      const total = row["Total (PNK)"] as bigint;
+      if (total > maxTotal) maxTotal = total;
+    }
+    const footer = [
+      `All ${rows.length} months`,
+      formatPNK(mainnet),
+      formatPNK(gnosis),
+      formatPNK(mainnet + gnosis),
+    ];
+    return { maxTotal, footer };
+  }, [data, isMonthly, rows]);
 
-  const isMonthly = activeTab === MONTHLY;
+  const columns = useMemo(() => {
+    if (isMonthly && monthly) return monthlyColumns(monthly.maxTotal, theme.seriesA);
+    return pnkColumns("Recipient", "Total (PNK)");
+  }, [isMonthly, monthly, theme]);
+
+  const badge = useMemo(() => {
+    if (!data || data.months.length === 0) return undefined;
+    const span = monthSpan(data.months[data.months.length - 1], data.months[0]);
+    return `${span === null ? "" : `Running ${formatDuration(span)} · `}${data.months.length} monthly distributions`;
+  }, [data]);
 
   return (
     <div>
       <PageHeader
         title="Staking Rewards"
-        description="Monthly PNK rewards for jurors staking in Kleros Court, distributed on Ethereum Mainnet and Gnosis. Reconstructed from the merkle-drop snapshots published to IPFS."
+        badge={phase === "done" ? badge : undefined}
+        description={
+          <>
+            Jurors who <strong>stake PNK in Kleros Court</strong> earn monthly staking rewards on top of arbitration
+            fees, split in proportion to each juror's stake. Rewards are{" "}
+            <strong>on-chain PNK on Ethereum Mainnet and Gnosis</strong>, reconstructed from the merkle-drop snapshots
+            the court publishes to IPFS.
+          </>
+        }
         actions={
           phase === "done" &&
           data && <PrimaryButton onClick={() => downloadXlsx(data)}>Download XLSX</PrimaryButton>
@@ -181,7 +238,7 @@ export default function StakingRewards() {
 
       {phase === "done" && data && (
         <>
-          <StatsRow stats={scopeStats(activeTab, data)} />
+          {isMonthly ? <StakingOverview data={data} /> : <StatsRow stats={scopeStats(activeTab, data)} />}
           <Tabs
             tabs={tabs}
             active={activeTab}
@@ -194,8 +251,10 @@ export default function StakingRewards() {
             defaultSortKey={isMonthly ? "Month" : undefined}
             noun={isMonthly ? ["month", "months"] : ["recipient", "recipients"]}
             searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
+            footer={isMonthly && monthly ? monthly.footer : undefined}
             onRowClick={isMonthly ? (row) => setActiveTab(String(row.Month)) : undefined}
           />
+          {isMonthly && <StakingToDate data={data} />}
           {errors.length > 0 && (
             <ErrorBanner>
               {errors.length} snapshot{errors.length > 1 ? "s" : ""} failed to load and {errors.length > 1 ? "were" : "was"} skipped.

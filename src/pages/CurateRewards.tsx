@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import styled from "styled-components";
+import styled, { useTheme } from "styled-components";
 
 import { PrimaryButton, SecondaryButton } from "components/Buttons";
 import ErrorState from "components/ErrorState";
 import FetchProgress from "components/FetchProgress";
+import { CurateOverview, CurateToDate } from "components/overview/CurateOverview";
+import { HeatRamp, HeatScale } from "components/overview/OverviewSections";
 import PageHeader from "components/PageHeader";
 import RewardsTable, { Column, Mono, Row } from "components/RewardsTable";
 import {
@@ -18,16 +20,29 @@ import {
   PeriodBlock,
 } from "components/rewardStyles";
 import StatsRow, { Stat } from "components/StatsRow";
+import { BAR_MAX_WIDTH, Bar, BarNum, BarWrap, HeatVal, makeHeat } from "components/TableCells";
 import Tabs from "components/Tabs";
 import {
   CurateData,
   CuratePeriod,
   CurateSnapshot,
   RewardLine,
+  avgWei,
+  countEntries,
   sumLines,
   useCurateRewards,
 } from "hooks/useCurateRewards";
-import { downloadBlob, formatMonthCount, formatPNK, shortAddress, toCsv, toWei } from "utils/format";
+import {
+  downloadBlob,
+  formatDuration,
+  formatMonthCount,
+  formatPNK,
+  monthSpan,
+  shortAddress,
+  toCsv,
+  toPnkNumber,
+  toWei,
+} from "utils/format";
 
 const SUMMARY = "Summary";
 const MONTHLY = "Monthly Totals";
@@ -71,39 +86,6 @@ function walletRows(snapshot: CurateSnapshot): Row[] {
 
 function grandRows(data: CurateData): Row[] {
   return Object.entries(data.grandTotals).map(([addr, totals]) => ({ addr, ...totals }));
-}
-
-// Prefer the published entryCounts (amended snapshots, 2026-07-20). For
-// snapshots without it, fall back to counting itemized reward lines — but
-// aggregate lump lines (empty registry/tagAddress) are not entries, so any
-// snapshot containing one reports null rather than a misleading line count.
-function countEntries(
-  snapshot: CurateSnapshot,
-  category: "total" | "submissions" | "removals" = "total"
-): number | null {
-  const published = snapshot.entryCounts?.[category];
-  if (typeof published === "number" && Number.isFinite(published)) return published;
-  if (snapshot.entryCounts) return null;
-  let count = 0;
-  for (const recipient of Object.values(snapshot.recipients ?? {})) {
-    const categories =
-      category === "total"
-        ? [recipient.submissions, recipient.removals, recipient.atq]
-        : category === "submissions"
-          ? [recipient.submissions]
-          : [recipient.removals];
-    for (const lines of categories) {
-      for (const line of lines ?? []) {
-        if (!line.registry && !line.tagAddress) return null;
-        count++;
-      }
-    }
-  }
-  return count;
-}
-
-function avgWei(total: bigint, count: number | null): bigint | null {
-  return count && count > 0 ? total / BigInt(count) : null;
 }
 
 function monthlyRows(data: CurateData): Row[] {
@@ -242,7 +224,10 @@ function walletColumns(): Column[] {
   ];
 }
 
-function monthlyColumns(): Column[] {
+// Mock-ordered month-by-month columns: dimmed zeros, a single-hue heat wash
+// on the per-submission average, and a proportional bar beside the total.
+function monthlyColumns(heat: (value: number) => string, maxTotal: bigint, barColor: string): Column[] {
+  const dimZero = (key: string) => (row: Row) => ((row[key] as bigint) === 0n ? "—" : formatPNK(row[key] as bigint));
   return [
     { key: "month", label: "Month", align: "left" },
     {
@@ -251,16 +236,34 @@ function monthlyColumns(): Column[] {
       align: "right",
       render: (row) => ((row.entries as bigint) < 0n ? "—" : Number(row.entries).toLocaleString()),
     },
-    { key: "submissions", label: "Submission rewards", align: "right" },
+    { key: "submissions", label: "Submissions", align: "right" },
+    { key: "removals", label: "Removals", align: "right", render: dimZero("removals") },
+    { key: "atq", label: "ATQ", align: "right", render: dimZero("atq") },
     {
       key: "avgSubmission",
-      label: "Avg reward per submission",
+      label: "PNK / submission",
       align: "right",
-      render: (row) => ((row.avgSubmission as bigint) < 0n ? "—" : formatPNK(row.avgSubmission as bigint)),
+      render: (row) =>
+        (row.avgSubmission as bigint) < 0n ? (
+          "—"
+        ) : (
+          <HeatVal $bg={heat(toPnkNumber(row.avgSubmission as bigint))}>{formatPNK(row.avgSubmission as bigint)}</HeatVal>
+        ),
     },
-    { key: "removals", label: "Removal rewards", align: "right" },
-    { key: "atq", label: "ATQ rewards", align: "right" },
-    { key: "total", label: "Total (PNK)", align: "right" },
+    {
+      key: "total",
+      label: "Total paid",
+      align: "right",
+      render: (row) => (
+        <BarWrap>
+          <Bar
+            $width={maxTotal > 0n ? (toPnkNumber(row.total as bigint) / toPnkNumber(maxTotal)) * BAR_MAX_WIDTH : 0}
+            $color={barColor}
+          />
+          <BarNum>{formatPNK(row.total as bigint)}</BarNum>
+        </BarWrap>
+      ),
+    },
   ];
 }
 
@@ -344,6 +347,7 @@ function WalletDetail({ address, periods, onBack }: WalletDetailProps) {
 }
 
 export default function CurateRewards() {
+  const theme = useTheme();
   const { phase, progress, errors, data, retry } = useCurateRewards();
   const [activeTab, setActiveTab] = useState(MONTHLY);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -359,6 +363,46 @@ export default function CurateRewards() {
     return walletRows(data.periods.find((p) => p.label === activeTab)?.snapshot ?? {});
   }, [data, activeTab, isMonthly]);
 
+  // Heat scale over the per-submission averages and bar scale over the month
+  // totals — computed on the monthly rows, consumed by the table renders.
+  const monthly = useMemo(() => {
+    if (!data || !isMonthly) return null;
+    const perSub = rows.filter((r) => (r.avgSubmission as bigint) >= 0n).map((r) => toPnkNumber(r.avgSubmission as bigint));
+    const heat = makeHeat(Math.min(...perSub, Infinity), Math.max(...perSub, -Infinity), theme.seriesA);
+    let maxTotal = 0n;
+    let entriesSum = 0;
+    let entriesKnown = true;
+    let sub = 0n;
+    let rem = 0n;
+    let atq = 0n;
+    let tot = 0n;
+    let subEntries: number | null = 0;
+    for (const { snapshot } of data.periods) {
+      const count = countEntries(snapshot);
+      if (count === null) entriesKnown = false;
+      else entriesSum += count;
+      const subCount = countEntries(snapshot, "submissions");
+      if (subEntries !== null) subEntries = subCount === null ? null : subEntries + subCount;
+      sub += toWei(snapshot.totals?.submissions);
+      rem += toWei(snapshot.totals?.removals);
+      atq += toWei(snapshot.totals?.atq);
+      const total = toWei(snapshot.totals?.total);
+      tot += total;
+      if (total > maxTotal) maxTotal = total;
+    }
+    const overallAvg = avgWei(sub, subEntries);
+    const footer = [
+      `All ${data.periods.length} months`,
+      entriesKnown ? entriesSum.toLocaleString() : "—",
+      formatPNK(sub),
+      formatPNK(rem),
+      formatPNK(atq),
+      overallAvg === null ? "—" : formatPNK(overallAvg),
+      formatPNK(tot),
+    ];
+    return { heat, maxTotal, footer };
+  }, [data, isMonthly, rows, theme]);
+
   function selectTab(tab: string) {
     setSelectedAddress(null);
     setActiveTab(tab);
@@ -369,20 +413,20 @@ export default function CurateRewards() {
       isMonthly ? "Month" : "Recipient",
       ...(isMonthly ? ["Entries"] : []),
       "Submission rewards (PNK)",
-      ...(isMonthly ? ["Avg reward per submission (PNK)"] : []),
       "Removal rewards (PNK)",
       "ATQ rewards (PNK)",
+      ...(isMonthly ? ["Avg reward per submission (PNK)"] : []),
       "Total (PNK)",
     ];
     const body = rows.map((row) => [
       String(isMonthly ? row.month : row.addr),
       ...(isMonthly ? [(row.entries as bigint) < 0n ? "" : String(row.entries)] : []),
       formatPNK(row.submissions as bigint),
+      formatPNK(row.removals as bigint),
+      formatPNK(row.atq as bigint),
       ...(isMonthly
         ? [(row.avgSubmission as bigint) < 0n ? "" : formatPNK(row.avgSubmission as bigint)]
         : []),
-      formatPNK(row.removals as bigint),
-      formatPNK(row.atq as bigint),
       formatPNK(row.total as bigint),
     ]);
     downloadBlob(
@@ -391,11 +435,26 @@ export default function CurateRewards() {
     );
   }
 
+  const badge = useMemo(() => {
+    if (!data || data.periods.length === 0) return undefined;
+    const span = monthSpan(data.periods[data.periods.length - 1].label, data.periods[0].label);
+    return `${span === null ? "" : `Running ${formatDuration(span)} · `}${data.periods.length} monthly distributions`;
+  }, [data]);
+
   return (
     <div>
       <PageHeader
         title="Curate Rewards"
-        description="Monthly PNK rewards for submissions, removals and ATQ across the Address Tags, Tokens and Domains registries. Amounts are on-chain PNK on Gnosis, disbursed directly to recipients."
+        badge={phase === "done" ? badge : undefined}
+        description={
+          <>
+            Kleros Curate pays independent contributors to build and maintain public registries of{" "}
+            <strong>address tags, tokens and domains</strong>: the datasets wallets and explorers use to tell users
+            what they are signing. Contributors submit entries, anyone can challenge them, and only entries that
+            survive review are paid. Rewards are <strong>on-chain PNK on Gnosis</strong>, disbursed monthly, directly
+            to recipients.
+          </>
+        }
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
@@ -405,7 +464,7 @@ export default function CurateRewards() {
 
       {phase === "done" && data && (
         <>
-          <StatsRow stats={scopeStats(activeTab, data)} />
+          {isMonthly ? <CurateOverview data={data} /> : <StatsRow stats={scopeStats(activeTab, data)} />}
           <Tabs tabs={tabs} active={activeTab} onSelect={selectTab} />
           {selectedAddress ? (
             <WalletDetail
@@ -416,11 +475,29 @@ export default function CurateRewards() {
           ) : (
             <RewardsTable
               key={activeTab}
-              columns={isMonthly ? monthlyColumns() : walletColumns()}
+              columns={
+                isMonthly && monthly
+                  ? monthlyColumns(monthly.heat.at, monthly.maxTotal, theme.seriesA)
+                  : walletColumns()
+              }
               rows={rows}
               defaultSortKey={isMonthly ? "month" : undefined}
               noun={isMonthly ? ["month", "months"] : ["recipient", "recipients"]}
               searchPlaceholder={isMonthly ? "Search month…" : "Search by wallet address (0x…)"}
+              footer={isMonthly && monthly ? monthly.footer : undefined}
+              legend={
+                isMonthly && monthly ? (
+                  <HeatScale>
+                    PNK per submission: lower
+                    <HeatRamp>
+                      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                        <i key={t} style={{ background: monthly.heat.atT(t) }} />
+                      ))}
+                    </HeatRamp>
+                    higher
+                  </HeatScale>
+                ) : undefined
+              }
               onRowClick={
                 isMonthly
                   ? (row) => selectTab(String(row.month))
@@ -428,6 +505,7 @@ export default function CurateRewards() {
               }
             />
           )}
+          {isMonthly && <CurateToDate data={data} />}
           <Foot>
             Data from {data.periods.length} month(s)
             {errors.length > 0 ? ` · ${errors.length} snapshot(s) failed to load` : ""}.{" "}
