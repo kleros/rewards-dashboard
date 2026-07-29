@@ -22,6 +22,9 @@ import {
 export interface MiniPoint {
   label: string;
   value: number | null; // null = unknown for that month (renders as a gap)
+  // Optional display override for tooltip/labels — e.g. "331+" when the value
+  // is a floor rather than an exact count.
+  display?: string;
 }
 
 interface MiniChartProps {
@@ -88,7 +91,7 @@ export default function MiniChart({ points, kind, color, name, height = 150, for
           <TipTitle>{formatMonthLabel(point.label)}</TipTitle>
           <TipRow>
             <span>{name}</span>
-            <b>{point.value === null ? "—" : format(point.value)}</b>
+            <b>{point.display ?? (point.value === null ? "—" : format(point.value))}</b>
           </TipRow>
         </>
       ),
@@ -184,7 +187,7 @@ export default function MiniChart({ points, kind, color, name, height = 150, for
               fontWeight={700}
               fill={theme.primaryText}
             >
-              {format(lastKnown.value)}
+              {lastKnown.display ?? format(lastKnown.value)}
             </text>
           )}
           {points.map((point, i) => (
@@ -197,7 +200,7 @@ export default function MiniChart({ points, kind, color, name, height = 150, for
                 fill="transparent"
                 tabIndex={0}
                 role="img"
-                aria-label={`${formatMonthLabel(point.label)}: ${name} ${point.value === null ? "unknown" : format(point.value)}`}
+                aria-label={`${formatMonthLabel(point.label)}: ${name} ${point.display ?? (point.value === null ? "unknown" : format(point.value))}`}
                 style={{ outline: "none" }}
                 onMouseMove={(e) => {
                   const rect = containerRef.current?.getBoundingClientRect();

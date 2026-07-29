@@ -6,7 +6,7 @@ import StackedColumnChart, { StackPoint } from "components/charts/StackedColumnC
 import { fmtWhole } from "components/charts/utils";
 import { PNK_TOTAL_SUPPLY } from "consts/index";
 import { StakingData } from "hooks/useStakingRewards";
-import { formatDuration, formatMonthLabel, formatPNKWhole, monthSpan, toPnkNumber } from "utils/format";
+import { formatDuration, formatMonthLabel, formatPNKWhole, monthSpan, monthsInLabel, toPnkNumber } from "utils/format";
 
 import {
   ChartHead,
@@ -44,11 +44,12 @@ import {
 
 interface MonthRow {
   label: string;
+  monthCount: number; // calendar months this bucket covers (2 for "2021-01 & 02")
   mainnet: number;
   gnosis: number;
-  total: number;
+  total: number; // the actual distribution total, unnormalized
   jurors: number;
-  perJuror: number | null;
+  perJuror: number | null; // per juror PER MONTH — multi-month buckets are averaged
 }
 
 const avg = (values: number[]): number | null =>
@@ -69,13 +70,18 @@ function useStakingOverview(data: StakingData) {
       for (const amount of Object.values(bucket.gnosis)) gnosis += amount;
       const jurors = new Set([...Object.keys(bucket.mainnet), ...Object.keys(bucket.gnosis)]).size;
       const total = toPnkNumber(mainnet + gnosis);
+      const monthCount = monthsInLabel(label);
       return {
         label,
+        monthCount,
         mainnet: toPnkNumber(mainnet),
         gnosis: toPnkNumber(gnosis),
         total,
         jurors,
-        perJuror: jurors > 0 ? total / jurors : null,
+        // Normalize to a monthly rate so the combined Jan+Feb 2021 bucket
+        // (two months of rewards in one distribution) doesn't read as one
+        // month — and doesn't inflate the first-year baseline below.
+        perJuror: jurors > 0 ? total / monthCount / jurors : null,
       };
     });
 
@@ -109,6 +115,9 @@ function useStakingOverview(data: StakingData) {
     return {
       ascending,
       months: data.months.length,
+      // Calendar months covered: the combined first bucket spans two, so the
+      // per-month average divides by this rather than the distribution count.
+      monthsCovered: ascending.reduce((sum, row) => sum + monthsInLabel(row.label), 0),
       jurors: Object.keys(data.grandTotals).length,
       totalWei,
       chains,
@@ -148,7 +157,7 @@ export function StakingOverview({ data }: { data: StakingData }) {
         <HeroFig>
           <Eyebrow>Average paid per month</Eyebrow>
           <HeroNum>
-            {formatPNKWhole(m.totalWei / BigInt(m.months))}
+            {formatPNKWhole(m.totalWei / BigInt(m.monthsCovered))}
             <Unit>PNK</Unit>
           </HeroNum>
           <HeroNote>
@@ -248,13 +257,19 @@ export function StakingOverview({ data }: { data: StakingData }) {
             />
           </figure>
           <figure>
-            <figcaption>Average PNK per juror</figcaption>
+            <figcaption>Average PNK per juror, per month</figcaption>
             <FigSub>
               {first.perJuror === null ? "—" : fmtWhole(first.perJuror)} in {formatMonthLabel(first.label)} ·{" "}
               {latest.perJuror === null ? "—" : fmtWhole(latest.perJuror)} in {formatMonthLabel(latest.label)}
             </FigSub>
             <MiniChart
-              points={m.ascending.map((row) => ({ label: row.label, value: row.perJuror }))}
+              points={m.ascending.map((row) => ({
+                label: row.label,
+                value: row.perJuror,
+                // Multi-month buckets plot their monthly average — say so.
+                display:
+                  row.perJuror !== null && row.monthCount > 1 ? `${fmtWhole(row.perJuror)} (monthly avg)` : undefined,
+              }))}
               kind="line"
               color={theme.seriesA}
               name="PNK / juror"

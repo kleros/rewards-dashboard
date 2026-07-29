@@ -29,13 +29,14 @@ import {
   RewardLine,
   avgWei,
   countEntries,
+  countTotalEntries,
   sumLines,
   useCurateRewards,
 } from "hooks/useCurateRewards";
 import {
   downloadBlob,
   formatDuration,
-  formatMonthCount,
+  formatMonthsStat,
   formatPNK,
   monthSpan,
   shortAddress,
@@ -92,9 +93,13 @@ function monthlyRows(data: CurateData): Row[] {
   return data.periods.map(({ label, snapshot }) => {
     const totals = snapshot.totals ?? {};
     const submissions = toWei(totals.submissions);
+    const entryTotal = countTotalEntries(snapshot);
     return {
       month: label,
-      entries: BigInt(countEntries(snapshot) ?? -1),
+      entries: BigInt(entryTotal?.value ?? -1),
+      // "+" marks a floor: some category counts are unrecoverable (2024-10's
+      // aggregate ATQ payment), so the true total is at least this.
+      entriesSuffix: entryTotal && !entryTotal.exact ? "+" : "",
       submissions,
       avgSubmission: avgWei(submissions, countEntries(snapshot, "submissions")) ?? -1n,
       removals: toWei(totals.removals),
@@ -153,6 +158,9 @@ function summaryStats(data: CurateData): Stat[] {
   // periods really are 12 consecutive calendar months — a failed fetch in
   // that window (or a future index gap) would otherwise silently shift it.
   const months = data.periods.length;
+  // 49 rewarded months span 51 calendar months (2023-07/08 were skipped) —
+  // formatMonthsStat keeps the count and span distinct.
+  const span = months > 0 ? monthSpan(data.periods[months - 1].label, data.periods[0].label) : null;
   const newest12 = data.periods.slice(0, 12);
   const monthIndex = (label: string): number | null => {
     const match = label.match(/^(\d{4})-(\d{2})$/);
@@ -168,9 +176,14 @@ function summaryStats(data: CurateData): Stat[] {
     return sum;
   }, 0n);
   return [
-    { label: "Months", value: formatMonthCount(months) },
+    // "Months rewarded", because two calendar months inside the window
+    // (2023-07/08) had no distribution — the "(over …)" span says so.
+    { label: "Months rewarded", value: formatMonthsStat(months, span) },
     { label: "Recipients", value: Object.keys(data.grandTotals).length.toLocaleString() },
-    { label: `Total distributed (${months} month${months === 1 ? "" : "s"})`, value: `${formatPNK(total)} PNK` },
+    {
+      label: `Total distributed (${months} rewarded month${months === 1 ? "" : "s"})`,
+      value: `${formatPNK(total)} PNK`,
+    },
     ...(last12Contiguous ? [{ label: "Total (last 12 months)", value: `${formatPNK(last12)} PNK` }] : []),
     { label: "Avg per month", value: `${formatPNK(total / BigInt(months))} PNK` },
     ...breakdownStats({
@@ -187,11 +200,14 @@ function periodStats(tab: string, data: CurateData): Stat[] {
   const snapshot = data.periods.find((p) => p.label === tab)?.snapshot ?? {};
   const totals = snapshot.totals ?? {};
   const submissions = toWei(totals.submissions);
-  const entries = countEntries(snapshot);
+  const entries = countTotalEntries(snapshot);
   return [
     { label: "Month", value: tab },
     { label: "Recipients", value: Object.keys(snapshot.recipients ?? {}).length.toLocaleString() },
-    { label: "Entries", value: entries === null ? "—" : entries.toLocaleString() },
+    {
+      label: "Entries",
+      value: entries === null ? "—" : `${entries.value.toLocaleString()}${entries.exact ? "" : "+"}`,
+    },
     { label: "Total distributed", value: `${formatPNK(toWei(totals.total))} PNK` },
     ...breakdownStats({
       submissions,
@@ -234,7 +250,8 @@ function monthlyColumns(heat: (value: number) => string, maxTotal: bigint, barCo
       key: "entries",
       label: "Entries",
       align: "right",
-      render: (row) => ((row.entries as bigint) < 0n ? "—" : Number(row.entries).toLocaleString()),
+      render: (row) =>
+        (row.entries as bigint) < 0n ? "—" : `${Number(row.entries).toLocaleString()}${row.entriesSuffix ?? ""}`,
     },
     { key: "submissions", label: "Submissions", align: "right" },
     { key: "removals", label: "Removals", align: "right", render: dimZero("removals") },
@@ -371,16 +388,21 @@ export default function CurateRewards() {
     const heat = makeHeat(Math.min(...perSub, Infinity), Math.max(...perSub, -Infinity), theme.seriesA);
     let maxTotal = 0n;
     let entriesSum = 0;
-    let entriesKnown = true;
+    let entriesExact = true;
+    let entriesAnyKnown = false;
     let sub = 0n;
     let rem = 0n;
     let atq = 0n;
     let tot = 0n;
     let subEntries: number | null = 0;
     for (const { snapshot } of data.periods) {
-      const count = countEntries(snapshot);
-      if (count === null) entriesKnown = false;
-      else entriesSum += count;
+      const count = countTotalEntries(snapshot);
+      if (count === null) entriesExact = false;
+      else {
+        entriesAnyKnown = true;
+        entriesSum += count.value;
+        if (!count.exact) entriesExact = false;
+      }
       const subCount = countEntries(snapshot, "submissions");
       if (subEntries !== null) subEntries = subCount === null ? null : subEntries + subCount;
       sub += toWei(snapshot.totals?.submissions);
@@ -393,7 +415,7 @@ export default function CurateRewards() {
     const overallAvg = avgWei(sub, subEntries);
     const footer = [
       `All ${data.periods.length} months`,
-      entriesKnown ? entriesSum.toLocaleString() : "—",
+      entriesAnyKnown ? `${entriesSum.toLocaleString()}${entriesExact ? "" : "+"}` : "—",
       formatPNK(sub),
       formatPNK(rem),
       formatPNK(atq),
@@ -420,7 +442,7 @@ export default function CurateRewards() {
     ];
     const body = rows.map((row) => [
       String(isMonthly ? row.month : row.addr),
-      ...(isMonthly ? [(row.entries as bigint) < 0n ? "" : String(row.entries)] : []),
+      ...(isMonthly ? [(row.entries as bigint) < 0n ? "" : `${row.entries}${row.entriesSuffix ?? ""}`] : []),
       formatPNK(row.submissions as bigint),
       formatPNK(row.removals as bigint),
       formatPNK(row.atq as bigint),
