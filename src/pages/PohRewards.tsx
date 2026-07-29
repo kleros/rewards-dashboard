@@ -14,6 +14,7 @@ import {
   DetailHead,
   Foot,
   GrandTotal,
+  LINES_COLS,
   LinesTable,
   MutedLabel,
   NumCell,
@@ -201,6 +202,11 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
               </h4>
               <div style={{ overflowX: "auto" }}>
                 <LinesTable>
+                  <colgroup>
+                    {LINES_COLS.map((width, i) => (
+                      <col key={i} style={{ width }} />
+                    ))}
+                  </colgroup>
                   <tbody>
                     <tr>
                       <td>

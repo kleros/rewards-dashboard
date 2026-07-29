@@ -50,6 +50,11 @@ export const LinesTable = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  /* Every period block is its own table; fixed layout + the shared LinesCols
+     template keeps the columns aligned across blocks instead of each table
+     auto-sizing to its own content. */
+  table-layout: fixed;
+  min-width: 560px;
 
   td {
     padding: 7px 10px 7px 0;
@@ -71,6 +76,10 @@ export const NumCell = styled.td`
   text-align: right;
   font-variant-numeric: tabular-nums;
 `;
+
+// Shared column widths for LinesTable: kind pill, registry/label, chain/date,
+// address, amount. One template so every period block aligns.
+export const LINES_COLS = ["120px", "22%", "24%", "auto", "140px"];
 
 export const BackRow = styled.div`
   margin-bottom: 14px;

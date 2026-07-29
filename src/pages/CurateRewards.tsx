@@ -14,6 +14,7 @@ import {
   DetailHead,
   Foot,
   GrandTotal,
+  LINES_COLS,
   LinesTable,
   MutedLabel,
   NumCell,
@@ -21,6 +22,7 @@ import {
 } from "components/rewardStyles";
 import StatsRow, { Stat } from "components/StatsRow";
 import { BAR_MAX_WIDTH, Bar, BarNum, BarWrap, HeatVal, makeHeat } from "components/TableCells";
+import TagAddress from "components/TagAddress";
 import Tabs from "components/Tabs";
 import {
   CurateData,
@@ -178,7 +180,7 @@ function summaryStats(data: CurateData): Stat[] {
   return [
     // "Months rewarded", because two calendar months inside the window
     // (2023-07/08) had no distribution — the "(over …)" span says so.
-    { label: "Months rewarded", value: formatMonthsStat(months, span) },
+    { label: "Months", value: formatMonthsStat(months, span) },
     { label: "Recipients", value: Object.keys(data.grandTotals).length.toLocaleString() },
     {
       label: `Total distributed (${months} rewarded month${months === 1 ? "" : "s"})`,
@@ -308,6 +310,13 @@ function WalletDetail({ address, periods, onBack }: WalletDetailProps) {
 
   const kindLabel = { sub: "Submission", rem: "Removal", atq: "ATQ" };
 
+  // ATQ lines carry the module's Curate registration status ("registered") in
+  // the chainName slot — it is not a chain, so don't display it as one.
+  const chainLabel = (line: RewardLine): string => {
+    const name = line.chainName ?? line.chain ?? "";
+    return name === "registered" ? "" : name;
+  };
+
   return (
     <div>
       <BackRow>
@@ -336,22 +345,45 @@ function WalletDetail({ address, periods, onBack }: WalletDetailProps) {
               </h4>
               <div style={{ overflowX: "auto" }}>
                 <LinesTable>
-                  <tbody>
-                    {lines.map((line, i) => (
-                      <tr key={i}>
-                        <td>
-                          <Pill $kind={line.kind}>{kindLabel[line.kind]}</Pill>
-                        </td>
-                        <td>{registryLabel(line.registry)}</td>
-                        <td>
-                          <MutedLabel as="span">{line.chainName ?? line.chain ?? ""}</MutedLabel>
-                        </td>
-                        <td>
-                          <Mono title={line.tagAddress}>{shortAddress(line.tagAddress ?? "")}</Mono>
-                        </td>
-                        <NumCell>{formatPNK(toWei(line.amount))} PNK</NumCell>
-                      </tr>
+                  <colgroup>
+                    {LINES_COLS.map((width, i) => (
+                      <col key={i} style={{ width }} />
                     ))}
+                  </colgroup>
+                  <tbody>
+                    {lines.map((line, i) =>
+                      // Aggregate lump line: no per-item breakdown exists —
+                      // whole months with unrecoverable tracking records, and
+                      // old-style ATQ payments (one lump per provider, no
+                      // module ids) — so say so instead of empty cells.
+                      (!line.registry || line.registry === "atq") && !line.tagAddress ? (
+                        <tr key={i}>
+                          <td>
+                            <Pill $kind={line.kind}>{kindLabel[line.kind]}</Pill>
+                          </td>
+                          <td colSpan={3}>
+                            <MutedLabel as="span">
+                              Aggregate reward — no itemized breakdown published for this month
+                            </MutedLabel>
+                          </td>
+                          <NumCell>{formatPNK(toWei(line.amount))} PNK</NumCell>
+                        </tr>
+                      ) : (
+                        <tr key={i}>
+                          <td>
+                            <Pill $kind={line.kind}>{kindLabel[line.kind]}</Pill>
+                          </td>
+                          <td>{registryLabel(line.registry)}</td>
+                          <td>
+                            <MutedLabel as="span">{chainLabel(line)}</MutedLabel>
+                          </td>
+                          <td>
+                            <TagAddress address={line.tagAddress} chainName={chainLabel(line)} />
+                          </td>
+                          <NumCell>{formatPNK(toWei(line.amount))} PNK</NumCell>
+                        </tr>
+                      )
+                    )}
                   </tbody>
                 </LinesTable>
               </div>
