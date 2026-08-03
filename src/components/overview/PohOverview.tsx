@@ -4,8 +4,8 @@ import { useTheme } from "styled-components";
 import MiniChart from "components/charts/MiniChart";
 import StackedColumnChart, { StackPoint } from "components/charts/StackedColumnChart";
 import { fmtCompact, fmtWhole } from "components/charts/utils";
-import { PNK_TOTAL_SUPPLY } from "consts/index";
 import { PohData } from "hooks/usePohRewards";
+import { usePnkTotalSupply } from "hooks/usePnkTotalSupply";
 import { formatDuration, formatMonthLabel, formatPNK, formatPNKWhole, monthSpan, toPnkNumber } from "utils/format";
 
 import {
@@ -46,6 +46,7 @@ interface MonthRow {
 }
 
 function usePohOverview(data: PohData) {
+  const supplyWei = usePnkTotalSupply();
   return useMemo(() => {
     let cumulative = 0;
     const ascending: MonthRow[] = [...data.months].reverse().map((month) => {
@@ -71,9 +72,10 @@ function usePohOverview(data: PohData) {
       perClaimWei: humans > 0 ? totalWei / BigInt(humans) : 0n,
       uniformAmount,
       duration: span === null ? null : formatDuration(span),
-      supplyPct: Number((totalWei * 10000n) / PNK_TOTAL_SUPPLY) / 100,
+      supplyPct: Number((totalWei * 10000n) / supplyWei) / 100,
+      supplyWei,
     };
-  }, [data]);
+  }, [data, supplyWei]);
 }
 
 export function PohOverview({ data }: { data: PohData }) {
@@ -246,7 +248,7 @@ export function PohToDate({ data }: { data: PohData }) {
           <SupplyTrack>
             <SupplyFill $pct={m.supplyPct} />
           </SupplyTrack>
-          <SupplyCaption>{m.supplyPct}% of {formatPNKWhole(PNK_TOTAL_SUPPLY)} PNK total supply</SupplyCaption>
+          <SupplyCaption>{m.supplyPct}% of {formatPNKWhole(m.supplyWei)} PNK total supply</SupplyCaption>
         </Supply>
       </ToDateGrid>
     </ToDate>

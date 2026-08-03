@@ -160,8 +160,8 @@ function summaryStats(data: CurateData): Stat[] {
   // periods really are 12 consecutive calendar months — a failed fetch in
   // that window (or a future index gap) would otherwise silently shift it.
   const months = data.periods.length;
-  // 49 rewarded months span 51 calendar months (2023-07/08 were skipped) —
-  // formatMonthsStat keeps the count and span distinct.
+  // Rewarded months can span more calendar months than were paid (skipped
+  // months) — formatMonthsStat keeps the count and span distinct.
   const span = months > 0 ? monthSpan(data.periods[months - 1].label, data.periods[0].label) : null;
   const newest12 = data.periods.slice(0, 12);
   const monthIndex = (label: string): number | null => {
@@ -310,11 +310,11 @@ function WalletDetail({ address, periods, onBack }: WalletDetailProps) {
 
   const kindLabel = { sub: "Submission", rem: "Removal", atq: "ATQ" };
 
-  // ATQ lines carry the module's Curate registration status ("registered") in
+  // ATQ lines carry the module's Curate status ("registered"/"removed") in
   // the chainName slot — it is not a chain, so don't display it as one.
   const chainLabel = (line: RewardLine): string => {
     const name = line.chainName ?? line.chain ?? "";
-    return name === "registered" ? "" : name;
+    return name === "registered" || name === "removed" ? "" : name;
   };
 
   return (
@@ -451,7 +451,7 @@ export default function CurateRewards() {
     }
     const overallAvg = avgWei(sub, subEntries);
     const footer = [
-      `All ${data.periods.length} months`,
+      `All ${data.periods.length} rewarded months`,
       entriesAnyKnown ? `${entriesSum.toLocaleString()}${entriesExact ? "" : "+"}` : "—",
       formatPNK(sub),
       formatPNK(rem),

@@ -4,7 +4,7 @@ import { useTheme } from "styled-components";
 import MiniChart from "components/charts/MiniChart";
 import StackedColumnChart, { StackPoint } from "components/charts/StackedColumnChart";
 import { fmtWhole } from "components/charts/utils";
-import { PNK_TOTAL_SUPPLY } from "consts/index";
+import { usePnkTotalSupply } from "hooks/usePnkTotalSupply";
 import { StakingData } from "hooks/useStakingRewards";
 import { formatDuration, formatMonthLabel, formatPNKWhole, monthSpan, monthsInLabel, toPnkNumber } from "utils/format";
 
@@ -61,6 +61,7 @@ const mult = (value: number): string => {
 };
 
 function useStakingOverview(data: StakingData) {
+  const supplyWei = usePnkTotalSupply();
   return useMemo(() => {
     const ascending: MonthRow[] = [...data.months].reverse().map((label) => {
       const bucket = data.monthData[label] ?? { mainnet: {}, gnosis: {} };
@@ -127,9 +128,10 @@ function useStakingOverview(data: StakingData) {
       avgPerJurorLast12: perLast,
       gnosisShareLast12: totalLast12 > 0 ? Math.round((gnosisLast12 / totalLast12) * 100) : null,
       duration: span === null ? null : formatDuration(span),
-      supplyPct: Number((totalWei * 10000n) / PNK_TOTAL_SUPPLY) / 100,
+      supplyPct: Number((totalWei * 10000n) / supplyWei) / 100,
+      supplyWei,
     };
-  }, [data]);
+  }, [data, supplyWei]);
 }
 
 export function StakingOverview({ data }: { data: StakingData }) {
@@ -201,8 +203,8 @@ export function StakingOverview({ data }: { data: StakingData }) {
             <TileUnit>jurors</TileUnit>
           </TileValue>
           <TileDesc>
-            Distinct juror addresses paid since {formatMonthLabel(first.label)}, across both chains. Staking is open to
-            anyone holding PNK.
+            Distinct juror addresses paid since {formatMonthLabel(first.label)}
+            {m.chains.length > 0 && <> on {m.chains.join(" & ")}</>}. Staking is open to anyone holding PNK.
           </TileDesc>
         </Tile>
         <Tile>
@@ -330,7 +332,7 @@ export function StakingToDate({ data }: { data: StakingData }) {
           <SupplyTrack>
             <SupplyFill $pct={m.supplyPct} />
           </SupplyTrack>
-          <SupplyCaption>{m.supplyPct}% of {formatPNKWhole(PNK_TOTAL_SUPPLY)} PNK total supply</SupplyCaption>
+          <SupplyCaption>{m.supplyPct}% of {formatPNKWhole(m.supplyWei)} PNK total supply</SupplyCaption>
         </Supply>
       </ToDateGrid>
     </ToDate>

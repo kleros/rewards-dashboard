@@ -4,8 +4,8 @@ import { useTheme } from "styled-components";
 import MiniChart from "components/charts/MiniChart";
 import StackedColumnChart, { StackPoint } from "components/charts/StackedColumnChart";
 import { fmtWhole } from "components/charts/utils";
-import { PNK_TOTAL_SUPPLY } from "consts/index";
 import { CurateData, countEntries, countTotalEntries } from "hooks/useCurateRewards";
+import { usePnkTotalSupply } from "hooks/usePnkTotalSupply";
 import { formatDuration, formatMonthLabel, formatPNKWhole, monthSpan, toPnkNumber, toWei } from "utils/format";
 
 import {
@@ -72,6 +72,7 @@ export interface CurateOverviewModel {
   registryCount: number; // distinct registries seen in itemized reward lines
   duration: string | null;
   supplyPct: number;
+  supplyWei: bigint; // live PNK totalSupply() the percentage is computed against
 }
 
 const avg = (values: number[]): number | null =>
@@ -84,6 +85,7 @@ const mult = (value: number): string => {
 };
 
 export function useCurateOverview(data: CurateData): CurateOverviewModel {
+  const supplyWei = usePnkTotalSupply();
   return useMemo(() => {
     const ascending: MonthRow[] = [...data.periods].reverse().map(({ label, snapshot }) => {
       const totals = snapshot.totals ?? {};
@@ -162,9 +164,10 @@ export function useCurateOverview(data: CurateData): CurateOverviewModel {
       spendMultiple,
       registryCount: registries.size,
       duration: span === null ? null : formatDuration(span),
-      supplyPct: Number((totalWei * 10000n) / PNK_TOTAL_SUPPLY) / 100,
+      supplyPct: Number((totalWei * 10000n) / supplyWei) / 100,
+      supplyWei,
     };
-  }, [data]);
+  }, [data, supplyWei]);
 }
 
 const entriesLabel = (row: { entries: number | null; entriesExact: boolean }): string =>
@@ -206,7 +209,10 @@ export function CurateOverview({ data }: { data: CurateData }) {
             <b>{fmtWhole(m.maxMonthlySub)} PNK a month</b>
             {m.recentSubAvg !== null && <> — lately about {fmtWhole(m.recentSubAvg)}</>}
             {m.volumeMultiple !== null ? (
-              <>, while monthly volume grew {mult(m.volumeMultiple)}× since {firstYear}</>
+              <>
+                , while monthly volume {m.volumeMultiple >= 1 ? "grew" : "shrank"}{" "}
+                {mult(m.volumeMultiple >= 1 ? m.volumeMultiple : 1 / m.volumeMultiple)}× since {firstYear}
+              </>
             ) : null}
             .
           </HeroNote>
@@ -259,7 +265,12 @@ export function CurateOverview({ data }: { data: CurateData }) {
           </TileValue>
           <TileDesc>
             Average paid per accepted submission over the last 12 months{" "}
-            {m.priceDivision !== null && <Chip>↓ {mult(m.priceDivision)}× vs {firstYear}</Chip>}
+            {m.priceDivision !== null && (
+              <Chip>
+                {m.priceDivision >= 1 ? "↓" : "↑"} {mult(m.priceDivision >= 1 ? m.priceDivision : 1 / m.priceDivision)}×
+                vs {firstYear}
+              </Chip>
+            )}
           </TileDesc>
         </Tile>
         <Tile>
@@ -274,17 +285,29 @@ export function CurateOverview({ data }: { data: CurateData }) {
       <SmallMultiples>
         <h3>
           {m.volumeMultiple !== null && m.priceDivision !== null
-            ? `Volume up ${mult(m.volumeMultiple)}×. Price per submission down ${mult(m.priceDivision)}×.`
+            ? `Volume ${m.volumeMultiple >= 1 ? "up" : "down"} ${mult(m.volumeMultiple >= 1 ? m.volumeMultiple : 1 / m.volumeMultiple)}×. ` +
+              `Price per submission ${m.priceDivision >= 1 ? "down" : "up"} ${mult(m.priceDivision >= 1 ? m.priceDivision : 1 / m.priceDivision)}×.`
             : "What the registries absorbed, month by month."}
         </h3>
         <p>
-          The two charts share the same timeline. The registries are absorbing far more work than they did in{" "}
-          {firstYear}, and each accepted submission costs a fraction of what it used to.
+          The two charts share the same timeline.
+          {m.volumeMultiple !== null && m.volumeMultiple > 1 && m.priceDivision !== null && m.priceDivision > 1 ? (
+            <>
+              {" "}
+              The registries are absorbing far more work than they did in {firstYear}, and each accepted submission
+              costs a fraction of what it used to.
+            </>
+          ) : (
+            <> They track how much work the registries absorbed and what each accepted submission cost.</>
+          )}
           {m.spendMultiple !== null && m.volumeMultiple !== null && (
             <>
               {" "}
               <b>
-                The monthly spend grew {mult(m.spendMultiple)}× while the work grew {mult(m.volumeMultiple)}×.
+                The monthly spend {m.spendMultiple >= 1 ? "grew" : "shrank"}{" "}
+                {mult(m.spendMultiple >= 1 ? m.spendMultiple : 1 / m.spendMultiple)}× while the work{" "}
+                {m.volumeMultiple >= 1 ? "grew" : "shrank"}{" "}
+                {mult(m.volumeMultiple >= 1 ? m.volumeMultiple : 1 / m.volumeMultiple)}×.
               </b>
             </>
           )}
@@ -378,7 +401,7 @@ export function CurateToDate({ data }: { data: CurateData }) {
           <SupplyTrack>
             <SupplyFill $pct={m.supplyPct} />
           </SupplyTrack>
-          <SupplyCaption>{m.supplyPct}% of {formatPNKWhole(PNK_TOTAL_SUPPLY)} PNK total supply</SupplyCaption>
+          <SupplyCaption>{m.supplyPct}% of {formatPNKWhole(m.supplyWei)} PNK total supply</SupplyCaption>
         </Supply>
       </ToDateGrid>
     </ToDate>

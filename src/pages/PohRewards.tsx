@@ -26,6 +26,7 @@ import { PohData, PohMonth, PohReward, usePohRewards } from "hooks/usePohRewards
 import {
   downloadBlob,
   formatDuration,
+  formatMonthLabel,
   formatMonthsStat,
   formatPNK,
   monthSpan,
@@ -308,8 +309,11 @@ export default function PohRewards() {
         description={
           <>
             Proof of Humanity v2 registers <strong>verified humans</strong> on-chain. Each registered human can claim
-            a <strong>PNK airdrop once</strong>, paid on Gnosis through the PnkRewardDistributer since January 2026 —
-            read live from the PoH v2 subgraph.
+            a <strong>PNK airdrop once</strong>, paid on Gnosis
+            {data && data.months.length > 0 && (
+              <> since {formatMonthLabel(data.months[data.months.length - 1].label)}</>
+            )}{" "}
+            — read live from the PoH v2 subgraph.
           </>
         }
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}

@@ -72,8 +72,8 @@ function scopeStats(tab: string, data: StakingData): Stat[] {
     // Count distributions, not calendar months: the first bucket combined
     // Jan+Feb 2021, so the two figures differ by one, and every other count
     // on the page (badge, overview, table footer) is a distribution count —
-    // showing 66 here next to the badge's 65 reads as a typo. The calendar
-    // span goes in the "(over ...)" suffix instead.
+    // a calendar-month count here would read as an off-by-one typo next to
+    // the badge. The calendar span goes in the "(over ...)" suffix instead.
     first = {
       label: "Months",
       value: formatMonthsStat(
