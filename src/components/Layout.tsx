@@ -10,33 +10,42 @@ const Container = styled.div`
 `;
 
 const Header = styled.header`
-  background: ${({ theme }) => theme.navbarBackground};
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: ${({ theme }) =>
+    theme.name === "dark" ? "rgba(26, 22, 37, 0.88)" : "rgba(30, 7, 95, 0.92)"};
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid #ffffff14;
 `;
 
 const HeaderContent = styled.div`
   width: 100%;
   max-width: 1140px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 12px 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 60px;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  min-height: 64px;
 `;
 
 const Brand = styled(Link)`
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 9px;
+  margin-right: auto;
   color: ${({ theme }) => theme.white};
   font-weight: 700;
-  font-size: 18px;
+  font-size: 17px;
+  letter-spacing: 0.01em;
   white-space: nowrap;
 
   &:hover {
     color: ${({ theme }) => theme.white};
-    opacity: 0.9;
+    opacity: 0.88;
   }
 
   small {
@@ -47,24 +56,32 @@ const Brand = styled(Link)`
 `;
 
 const Logo = styled.img`
-  height: 20px;
+  height: 22px;
   align-self: center;
 `;
 
 const Nav = styled.nav`
   display: flex;
   align-items: center;
-  gap: 2px;
-  overflow-x: auto;
+  gap: 3px;
+  background: #ffffff0f;
+  border: 1px solid #ffffff0f;
+  border-radius: 11px;
+  padding: 3px;
+
+  @media (max-width: 900px) {
+    order: 3;
+    width: 100%;
+  }
 `;
 
 const StyledNavLink = styled(NavLink)`
   color: ${({ theme }) => theme.lavenderPurple};
   font-size: 14px;
-  padding: 6px 9px;
-  border-radius: 7px;
+  padding: 7px 14px;
+  border-radius: 8px;
   white-space: nowrap;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 
   &:hover {
     color: ${({ theme }) => theme.white};
@@ -72,27 +89,38 @@ const StyledNavLink = styled(NavLink)`
   }
 
   &.active {
-    color: ${({ theme }) => theme.white};
-    background: #ffffff1f;
+    color: ${({ theme }) => theme.darkPurple};
+    background: ${({ theme }) => theme.lavenderPurple};
     font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  }
+
+  @media (max-width: 900px) {
+    flex: 1 0 auto;
+    text-align: center;
+    font-size: 13px;
+    padding: 8px 6px;
   }
 `;
 
 const ThemeButton = styled.button`
-  background: none;
-  border: 1px solid #ffffff42;
-  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  background: #ffffff0f;
+  border: 1px solid #ffffff1f;
+  border-radius: 11px;
   color: ${({ theme }) => theme.white};
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
-  padding: 5px 9px;
-  margin-left: 8px;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
 
   &:hover {
-    border-color: ${({ theme }) => theme.white};
-    background: #ffffff14;
+    border-color: #ffffff66;
+    background: #ffffff1a;
   }
 
   &:active {
@@ -139,13 +167,13 @@ export default function Layout({ themeName, toggleTheme }: LayoutProps) {
             <Logo src={logoUrl} alt="" /> Kleros Rewards <small>Dashboard</small>
           </Brand>
           <Nav>
-            <StyledNavLink to="/staking-rewards">Staking Rewards</StyledNavLink>
-            <StyledNavLink to="/curate-rewards">Curate Rewards</StyledNavLink>
-            <StyledNavLink to="/poh-rewards">Proof of Humanity Rewards</StyledNavLink>
-            <ThemeButton onClick={toggleTheme} title="Toggle theme">
-              {themeName === "dark" ? "☀" : "☾"}
-            </ThemeButton>
+            <StyledNavLink to="/staking-rewards">Staking</StyledNavLink>
+            <StyledNavLink to="/curate-rewards">Curate</StyledNavLink>
+            <StyledNavLink to="/poh-rewards">Proof of Humanity</StyledNavLink>
           </Nav>
+          <ThemeButton onClick={toggleTheme} title="Toggle theme">
+            {themeName === "dark" ? "☀" : "☾"}
+          </ThemeButton>
         </HeaderContent>
       </Header>
       <Main>
