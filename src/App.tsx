@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ThemeProvider } from "styled-components";
 
 import Layout from "components/Layout";
+import AgentAmbassadors from "pages/AgentAmbassadors";
 import CurateRewards from "pages/CurateRewards";
 import Home from "pages/Home";
 import PohRewards from "pages/PohRewards";
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="staking-rewards" element={<StakingRewards />} />
             <Route path="curate-rewards" element={<CurateRewards />} />
             <Route path="poh-rewards" element={<PohRewards />} />
+            <Route path="agent-ambassadors" element={<AgentAmbassadors />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

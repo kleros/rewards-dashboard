@@ -198,6 +198,7 @@ export default function Layout({ themeName, toggleTheme }: LayoutProps) {
             <StyledNavLink to="/staking-rewards">Staking</StyledNavLink>
             <StyledNavLink to="/curate-rewards">Curate</StyledNavLink>
             <StyledNavLink to="/poh-rewards">Proof of Humanity</StyledNavLink>
+            <StyledNavLink to="/agent-ambassadors">Agent Ambassadors</StyledNavLink>
           </Nav>
           <ThemeButton onClick={toggleTheme} title="Toggle theme">
             {themeName === "dark" ? <SunIcon /> : <MoonIcon />}

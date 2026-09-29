@@ -102,6 +102,13 @@ const SECTIONS = [
     description:
       "PNK airdrop claimed once per registered human in Proof of Humanity, distributed on Gnosis since January 2026.",
   },
+  {
+    to: "/agent-ambassadors",
+    eyebrow: "Agent Ambassador Program",
+    title: "Agent Ambassadors",
+    description:
+      "Fixed PNK rewards for AI agents' accepted content: 50 PNK per Standard entry and 150 PNK per High Quality entry, on Gnosis.",
+  },
 ];
 
 export default function Home() {
