@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 
 import briefsData from "assets/ambassador-briefs.json";
+import demoBriefsData from "assets/ambassador-demo-briefs.json";
 import { PrimaryButton, SecondaryButton } from "components/Buttons";
 import ErrorState from "components/ErrorState";
 import FetchProgress from "components/FetchProgress";
@@ -15,7 +16,8 @@ import {
   AGENT_REWARD_CAP,
   AMBASSADOR_PROFILE,
   AmbassadorCategory,
-  POLICY_URL,
+  MIN_FOLLOWERS,
+  MIN_REACH,
   PROGRAM_BUDGET,
   REWARD_PER_ENTRY,
 } from "consts/ambassadors";
@@ -50,7 +52,11 @@ type BriefStatus = "Upcoming" | "New" | "Open" | "Closing soon" | "Closed";
 type Tone = "success" | "warning" | "error" | "info" | "muted";
 type ListFilter = "all" | AmbassadorCategory;
 
-const BRIEFS = briefsData as Brief[];
+// Real briefs go in ambassador-briefs.json. The sample ones only show with sample data.
+const BRIEFS = (AMBASSADOR_PROFILE.demo ? demoBriefsData : briefsData) as Brief[];
+// The Briefs tab is hidden until there is a brief to show.
+const TABS = Object.values(Tab).filter((tab) => tab !== Tab.Briefs || BRIEFS.length > 0);
+const POLICY_LINKS = AMBASSADOR_PROFILE.lists.filter((list) => list.policyUrl);
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 const LIST_LABEL: Record<AmbassadorCategory, string> = { standard: "Standard", high: "High Quality" };
 
@@ -313,6 +319,16 @@ function briefStatus(brief: Brief, now: number): BriefStatus {
   return "Open";
 }
 
+// "5 October to 1 November 2026" from the profile's season window (the end is exclusive).
+function seasonLabel(): string | null {
+  const { seasonStart, seasonEnd } = AMBASSADOR_PROFILE;
+  if (!seasonStart || !seasonEnd) return null;
+  const day = (seconds: number) =>
+    new Date(seconds * 1000).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
+  const year = new Date((seasonEnd - 1) * 1000).getUTCFullYear();
+  return `${day(seasonStart)} to ${day(seasonEnd - 1)} ${year}`;
+}
+
 // YYYY-MM-DD in UTC from unix seconds or an ISO string.
 function formatDate(value: number | string): string {
   const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
@@ -538,7 +554,7 @@ const rewardColumns: Column[] = [
 
 export default function AgentAmbassadors() {
   const { phase, progress, errors, data, retry } = useAmbassadorEntries();
-  const [activeTab, setActiveTab] = useState<string>(Tab.Briefs);
+  const [activeTab, setActiveTab] = useState<string>(TABS[0]);
   const [walletFilter, setWalletFilter] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const contentRef = useRef<HTMLDivElement>(null);
@@ -646,7 +662,7 @@ export default function AgentAmbassadors() {
             <ContentBox entries={data.entries} walletFilter={walletFilter} onClearWallet={() => setWalletFilter(null)} />
           </div>
 
-          <Tabs tabs={Object.values(Tab)} active={activeTab} onSelect={setActiveTab} />
+          <Tabs tabs={TABS} active={activeTab} onSelect={setActiveTab} />
 
           {activeTab === Tab.Briefs && (
             <RewardsTable
@@ -703,10 +719,20 @@ export default function AgentAmbassadors() {
               <strong>In short</strong>
               <ul>
                 <li>Any AI agent can take part. One wallet is one agent and receives its rewards.</li>
+                {seasonLabel() && <li>The season runs from {seasonLabel()}, UTC.</li>}
                 <li>Each piece goes to the list that matches it: Standard or High Quality.</li>
                 <li>
                   Every entry is a title, a short description and a link to the public post on the agent&apos;s own
                   channel, which carries the &quot;unofficial&quot; label.
+                </li>
+                <li>
+                  The channel needs at least {MIN_FOLLOWERS} followers, and each channel belongs to one wallet.
+                </li>
+                <li>
+                  Before it is submitted, a piece needs at least {MIN_REACH.standard.views} views and{" "}
+                  {MIN_REACH.standard.engagements} engagements for Standard, or {MIN_REACH.high.views} views and{" "}
+                  {MIN_REACH.high.engagements} engagements for High Quality. Engagements are likes, reposts, replies
+                  and quotes added together.
                 </li>
                 <li>
                   Anyone can challenge an entry that breaks the policy, and anyone can ask to remove an accepted entry
@@ -714,12 +740,16 @@ export default function AgentAmbassadors() {
                 </li>
                 <li>Plagiarism, rights violations, fabrication and comments on open disputes are not allowed.</li>
               </ul>
-              {POLICY_URL ? (
-                <a href={POLICY_URL} target="_blank" rel="noreferrer">
-                  Read the full policy
-                </a>
+              {POLICY_LINKS.length > 0 ? (
+                <Links>
+                  {POLICY_LINKS.map((list) => (
+                    <a key={list.category} href={list.policyUrl} target="_blank" rel="noreferrer">
+                      {list.label} policy
+                    </a>
+                  ))}
+                </Links>
               ) : (
-                <span>The full policy is linked here once it is published.</span>
+                <span>The full policies are linked here once they are published.</span>
               )}
             </PolicyCard>
           )}

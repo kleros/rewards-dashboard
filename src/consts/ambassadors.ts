@@ -11,6 +11,8 @@ export interface AmbassadorList {
   label: string;
   // Lowercase Light Curate (LGTCR) registry address.
   address: string;
+  // The policy jurors apply to this list (the file its MetaEvidence references).
+  policyUrl?: string;
 }
 
 export interface AmbassadorProfile {
@@ -28,10 +30,9 @@ export interface AmbassadorProfile {
   demo?: boolean;
 }
 
-// "demo" shows bundled sample entries (made-up agents) for layout checks.
-// "preview" borrows two live Scout lists on Gnosis so the pages can be built and
-// checked before the program lists exist. "sepolia" and "gnosis" point at the
-// program lists once they are deployed; fill in the addresses then.
+// "gnosis" reads the program's two lists and is the default. "sepolia" reads the
+// test list. "demo" shows bundled sample entries (made-up agents) for layout
+// checks, and "preview" borrows two live Scout lists to try the page on busy data.
 const PROFILES: Record<string, AmbassadorProfile> = {
   demo: {
     chainId: 100,
@@ -65,9 +66,22 @@ const PROFILES: Record<string, AmbassadorProfile> = {
   gnosis: {
     chainId: 100,
     lists: [
-      { category: "standard", label: "Standard", address: "" },
-      { category: "high", label: "High Quality", address: "" },
+      {
+        category: "standard",
+        label: "Standard",
+        address: "0x1ef1f0fd8d702b8b03dc1f8f8b365e634cde90ee",
+        policyUrl: "https://cdn.kleros.link/ipfs/QmUXoPTpFEoXpY5yv7ukN5fjfiHnK4kfd3NTWREm99EY4b",
+      },
+      {
+        category: "high",
+        label: "High Quality",
+        address: "0x78e85c1b148452996af7ba2b0a4a87c01d23aac3",
+        policyUrl: "https://cdn.kleros.link/ipfs/QmSLq4kJXQJgM6uDbohuihnNwjPbKDMsbt3uoKW5ENEoLX",
+      },
     ],
+    // Season 1: Monday 5 October to Sunday 1 November 2026, UTC (the end is exclusive).
+    seasonStart: Date.UTC(2026, 9, 5) / 1000,
+    seasonEnd: Date.UTC(2026, 10, 2) / 1000,
   },
 };
 
@@ -75,8 +89,8 @@ const PROFILES: Record<string, AmbassadorProfile> = {
 const urlProfile =
   typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("data");
 
-export const AMBASSADOR_PROFILE_NAME: string = urlProfile ?? import.meta.env.VITE_AMBASSADOR_PROFILE ?? "preview";
-export const AMBASSADOR_PROFILE: AmbassadorProfile = PROFILES[AMBASSADOR_PROFILE_NAME] ?? PROFILES.preview;
+export const AMBASSADOR_PROFILE_NAME: string = urlProfile ?? import.meta.env.VITE_AMBASSADOR_PROFILE ?? "gnosis";
+export const AMBASSADOR_PROFILE: AmbassadorProfile = PROFILES[AMBASSADOR_PROFILE_NAME] ?? PROFILES.gnosis;
 
 // Public Envio indexer used by the Curate app (all chains, no key).
 export const CURATE_INDEXER_URL = "https://indexer.hyperindex.xyz/1a2f51c/v1/graphql";
@@ -89,5 +103,9 @@ export const REWARD_PER_ENTRY: Record<AmbassadorCategory, bigint> = {
 export const AGENT_REWARD_CAP = 50_000n * WEI;
 export const PROGRAM_BUDGET = 500_000n * WEI;
 
-// Published once the policy is final and pinned on IPFS.
-export const POLICY_URL: string | null = null;
+// Minimums from the list policies, checked when an entry is submitted.
+export const MIN_FOLLOWERS = 20;
+export const MIN_REACH: Record<AmbassadorCategory, { views: number; engagements: number }> = {
+  standard: { views: 100, engagements: 10 },
+  high: { views: 500, engagements: 100 },
+};
