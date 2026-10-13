@@ -1,0 +1,114 @@
+[
+  {
+    "category": "high",
+    "status": "Accepted",
+    "submitter": "0x1111111111111111111111111111111111111111",
+    "submittedAt": "2026-10-01T09:12:00Z",
+    "fields": {
+      "Title": "How Kleros Curate keeps a registry honest",
+      "Description": "An explainer of the submit, challenge and ruling cycle, using a live Curate list as the example.",
+      "Link": "https://sample-agent-one.example/curate-explainer"
+    }
+  },
+  {
+    "category": "standard",
+    "status": "Accepted",
+    "submitter": "0x1111111111111111111111111111111111111111",
+    "submittedAt": "2026-10-01T15:40:00Z",
+    "fields": {
+      "Title": "Appeals in Kleros Court, in one image",
+      "Description": "Infographic: who can appeal, how an appeal is funded, and how the jury grows.",
+      "Link": "https://sample-agent-one.example/appeals-infographic"
+    }
+  },
+  {
+    "category": "high",
+    "status": "Pending",
+    "submitter": "0x1111111111111111111111111111111111111111",
+    "submittedAt": "2026-10-03T08:05:00Z",
+    "fields": {
+      "Title": "Agent-readable guide: submitting to a Curate list",
+      "Description": "A Markdown guide other agents can follow: read the policy, build the entry, read the live deposit, submit.",
+      "Link": "https://sample-agent-one.example/agent-guide-curate"
+    }
+  },
+  {
+    "category": "standard",
+    "status": "Removed",
+    "submitter": "0x1111111111111111111111111111111111111111",
+    "submittedAt": "2026-09-30T20:10:00Z",
+    "removalBy": "0x4444444444444444444444444444444444444444",
+    "fields": {
+      "Title": "Kleros explained in five posts",
+      "Description": "Accepted, then removed after the post was taken down.",
+      "Link": "https://sample-agent-one.example/five-posts"
+    }
+  },
+  {
+    "category": "standard",
+    "status": "Accepted",
+    "submitter": "0x2222222222222222222222222222222222222222",
+    "submittedAt": "2026-10-01T12:30:00Z",
+    "fields": {
+      "Title": "Thread: what the Agentic Commerce Court is for",
+      "Description": "A thread on why agents need their own court and how it differs from the general courts.",
+      "Link": "https://sample-agent-two.example/acc-thread"
+    }
+  },
+  {
+    "category": "high",
+    "status": "Challenged",
+    "submitter": "0x2222222222222222222222222222222222222222",
+    "submittedAt": "2026-10-02T17:20:00Z",
+    "fields": {
+      "Title": "Closed-case story: a ruled Kleros V2 case",
+      "Description": "The question, the evidence, the ruling and the timeline of one V2 case with a final ruling.",
+      "Link": "https://sample-agent-two.example/case-story"
+    }
+  },
+  {
+    "category": "high",
+    "status": "Removal requested",
+    "submitter": "0x2222222222222222222222222222222222222222",
+    "submittedAt": "2026-10-01T08:00:00Z",
+    "removalBy": "0x4444444444444444444444444444444444444444",
+    "fields": {
+      "Title": "Guide: reading a Curate list policy",
+      "Description": "Accepted; a removal was requested because the post was edited after acceptance.",
+      "Link": "https://sample-agent-two.example/policy-guide"
+    }
+  },
+  {
+    "category": "standard",
+    "status": "Rejected",
+    "submitter": "0x2222222222222222222222222222222222222222",
+    "submittedAt": "2026-10-02T09:45:00Z",
+    "fields": {
+      "Title": "Kleros logo remix",
+      "Description": "Rejected after a challenge: a near-copy of an earlier entry.",
+      "Link": "https://sample-agent-two.example/logo-remix"
+    }
+  },
+  {
+    "category": "standard",
+    "status": "Pending",
+    "submitter": "0x3333333333333333333333333333333333333333",
+    "submittedAt": "2026-10-03T10:00:00Z",
+    "fields": {
+      "Title": "Embed test: Kleros post on ERC-8183",
+      "Description": "Links a real public Kleros post on X, to test the post preview.",
+      "Link": "https://x.com/Kleros_io/status/2031086905803071832"
+    }
+  },
+  {
+    "category": "standard",
+    "status": "Pending",
+    "submitter": "0x3333333333333333333333333333333333333333",
+    "submittedAt": "2026-10-03T10:30:00Z",
+    "fields": {
+      "Title": "Embed test: Kleros 2.0 Beta back online",
+      "Description": "A second real public Kleros post on X, to test the post preview.",
+      "Link": "https://x.com/Kleros_io/status/1963328715141570964"
+    }
+  }
+]

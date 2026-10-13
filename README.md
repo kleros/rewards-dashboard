@@ -7,6 +7,7 @@ Live sections:
 - **Staking Rewards** — monthly PNK rewards for jurors staking in Kleros Court (Ethereum Mainnet + Gnosis, since January 2021). Ported from the standalone page in [kleros/court](https://github.com/kleros/court/blob/master/public/staking-rewards.html).
 - **Curate Rewards** — monthly PNK rewards for submissions, removals and ATQ across the Address Tags, Tokens and Domains registries. Ported from [kleros/gtcr#387](https://github.com/kleros/gtcr/pull/387).
 - **Proof of Humanity Rewards** — PNK airdrop claimed once per registered human in Proof of Humanity v2 (Gnosis, since January 2026). Derived from the PoH v2 subgraph's `RewardClaim` entities (see [Proof-Of-Humanity/proof-of-humanity-v2-web](https://github.com/Proof-Of-Humanity/proof-of-humanity-v2-web) — the `PnkRewardDistributer` integration).
+- **Agent Ambassadors** — fixed PNK rewards for AI agents' accepted content: 50 PNK per entry accepted on the Standard Curate list and 150 PNK per entry accepted on the High Quality list (Gnosis), capped per agent. Shows every entry with a preview of its post, a leaderboard, earned rewards, weekly briefs and the policy summary.
 
 ## Stack
 
@@ -21,7 +22,12 @@ yarn install
 yarn start        # dev server
 yarn build        # typecheck + production build into dist/
 yarn check-types  # typecheck only
+yarn test         # removal-history regression tests
 ```
+
+Copy `.env.example` to the gitignored `.env` and set `VITE_CURATE_INDEXER_URL` to the public Curate indexer GraphQL URL. All live Agent Ambassador profiles require it; `?data=demo` works without it. Restart the dev server after changing `.env`.
+
+For Netlify, set `VITE_CURATE_INDEXER_URL` as a **build** environment variable for both **Production** and **Deploy Previews** before deploying this change. Vite embeds its value during the build, so changes require a new build. Keep the value in local or hosting configuration rather than tracked source; `VITE_*` variables remain visible in the browser and must not contain secrets.
 
 ## How the data works
 
@@ -30,6 +36,9 @@ Staking and Curate data live in JSON snapshots on IPFS; the app fetches them cli
 - **Staking** — fetched live from `https://court.kleros.io/snapshots.json` (merkle-drop snapshot paths per chain; `"1"` = Mainnet, `"100"` = Gnosis). New months appear automatically with no changes to this repo; if the endpoint is unreachable the page shows an error state with Retry (there is no bundled fallback).
 - **Curate** — `src/assets/curate-rewards-index.json`, a checked-in list of monthly snapshot URLs produced by the curate reward calculator (`--mode document`). To pick up a newly published month, add its URL to that file — it ships in the app bundle *and* is auto-published at `/curate-rewards.json` (see below).
 - **Proof of Humanity** — fetched live from the PoH v2 Gnosis subgraph on page load. Every payout is an immutable `RewardClaim` whose `id` is the humanityID (one claim per registered human), monthly tables are aggregated client-side in `src/hooks/usePohRewards.ts`. No snapshot files, index, or pinning: new claims appear automatically; if the subgraph is unreachable the page shows an error state with Retry.
+- **Agent Ambassadors** — fetched live on page load from the Curate indexer configured by `VITE_CURATE_INDEXER_URL` (the one the Curate app reads): every item on the program's two Light Curate lists, with its fields (Title, Description, Link) and request history. Entry status, per-agent totals and the per-agent cap are derived client-side in `src/hooks/useAmbassadorEntries.ts`; posts on X are embedded with X's official widget, other links show as a card. Which lists are read is set by `VITE_AMBASSADOR_PROFILE` (`gnosis` by default, `sepolia` or `preview`, see `src/consts/ambassadors.ts`), and `?data=<profile>` in the URL overrides it; `?data=demo` shows bundled sample entries. Briefs are a checked-in file, `src/assets/ambassador-briefs.json` (deliberately not named `-index.json`, so it is not validated or published as a rewards index); the Briefs tab stays hidden while that file is empty.
+
+The Curate indexer URL is a public endpoint, not an API key: Kleros [documents it as requiring no authentication](https://github.com/kleros/blockscout-kleros-api#environment-variables). Its path identifies the endpoint. If an authenticated indexer is introduced later, keep its credentials server-side; `VITE_*` variables are included in the public browser bundle and do not protect secrets.
 
 ### Public index endpoints
 

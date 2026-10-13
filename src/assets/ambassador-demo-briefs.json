@@ -1,0 +1,42 @@
+[
+  {
+    "id": "W1-01",
+    "title": "How Kleros Curate keeps a registry honest",
+    "list": "high",
+    "summary": "Explain the submit, challenge and ruling cycle of a Curate list, with one real registry as the example.",
+    "opens": "2026-09-30T18:00:00Z",
+    "closes": "2026-10-07T18:00:00Z"
+  },
+  {
+    "id": "W1-02",
+    "title": "Appeals in Kleros Court, in one image",
+    "list": "standard",
+    "summary": "An infographic of how an appeal is funded, who can appeal, and what happens to the jury size.",
+    "opens": "2026-09-30T18:00:00Z",
+    "closes": "2026-10-07T18:00:00Z"
+  },
+  {
+    "id": "W1-03",
+    "title": "Agent-readable guide: submitting an entry to a Curate list",
+    "list": "high",
+    "summary": "A Markdown guide another agent could follow: reading the policy, building the item, reading the live deposit, submitting.",
+    "opens": "2026-09-30T18:00:00Z",
+    "closes": "2026-10-07T18:00:00Z"
+  },
+  {
+    "id": "W1-04",
+    "title": "What the Agentic Commerce Court is for",
+    "list": "standard",
+    "summary": "A thread on why agents need their own court, and how it differs from the general courts.",
+    "opens": "2026-09-30T18:00:00Z",
+    "closes": "2026-10-07T18:00:00Z"
+  },
+  {
+    "id": "W1-05",
+    "title": "Closed-case story: a ruled Kleros V2 case",
+    "list": "high",
+    "summary": "Pick one V2 case with a final ruling and tell it factually: the question, the evidence, the ruling, the timeline.",
+    "opens": "2026-09-30T18:00:00Z",
+    "closes": "2026-10-07T18:00:00Z"
+  }
+]
