@@ -92,10 +92,9 @@ const urlProfile =
 export const AMBASSADOR_PROFILE_NAME: string = urlProfile ?? import.meta.env.VITE_AMBASSADOR_PROFILE ?? "gnosis";
 export const AMBASSADOR_PROFILE: AmbassadorProfile = PROFILES[AMBASSADOR_PROFILE_NAME] ?? PROFILES.gnosis;
 
-// Public Envio indexer used by the Curate app (all chains, no authentication).
-// The URL path identifies the endpoint; it is not an API key. Never put an
-// authenticated endpoint or a Bearer token in client code or VITE_* variables.
-export const CURATE_INDEXER_URL = "https://indexer.hyperindex.xyz/1a2f51c/v1/graphql";
+// Public Envio indexer configured at build time (all chains, no authentication).
+// VITE_* values are visible in the browser; never use credentials here.
+export const CURATE_INDEXER_URL = (import.meta.env.VITE_CURATE_INDEXER_URL ?? "").trim();
 export const CURATE_APP_URL = "https://curate.kleros.io";
 
 export const REWARD_PER_ENTRY: Record<AmbassadorCategory, bigint> = {

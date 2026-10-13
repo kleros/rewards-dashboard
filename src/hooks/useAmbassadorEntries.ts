@@ -361,6 +361,11 @@ export function useAmbassadorEntries(profile: AmbassadorProfile = AMBASSADOR_PRO
       if (profile.demo) {
         setData(aggregate(demoToEntries(profile)));
       } else {
+        if (!CURATE_INDEXER_URL) {
+          throw new Error(
+            "The Curate indexer URL is missing. Set VITE_CURATE_INDEXER_URL before starting or building the app."
+          );
+        }
         const items = await fetchAllItems(profile, setProgress, startTime);
         const entries = items
           .map((item) => toEntry(item, profile))
