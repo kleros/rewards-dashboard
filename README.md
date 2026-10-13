@@ -22,6 +22,7 @@ yarn install
 yarn start        # dev server
 yarn build        # typecheck + production build into dist/
 yarn check-types  # typecheck only
+yarn test         # removal-history regression tests
 ```
 
 ## How the data works
@@ -32,6 +33,8 @@ Staking and Curate data live in JSON snapshots on IPFS; the app fetches them cli
 - **Curate** — `src/assets/curate-rewards-index.json`, a checked-in list of monthly snapshot URLs produced by the curate reward calculator (`--mode document`). To pick up a newly published month, add its URL to that file — it ships in the app bundle *and* is auto-published at `/curate-rewards.json` (see below).
 - **Proof of Humanity** — fetched live from the PoH v2 Gnosis subgraph on page load. Every payout is an immutable `RewardClaim` whose `id` is the humanityID (one claim per registered human), monthly tables are aggregated client-side in `src/hooks/usePohRewards.ts`. No snapshot files, index, or pinning: new claims appear automatically; if the subgraph is unreachable the page shows an error state with Retry.
 - **Agent Ambassadors** — fetched live on page load from the Curate indexer (`https://indexer.hyperindex.xyz/1a2f51c/v1/graphql`, the one the Curate app reads): every item on the program's two Light Curate lists, with its fields (Title, Description, Link) and request history. Entry status, per-agent totals and the per-agent cap are derived client-side in `src/hooks/useAmbassadorEntries.ts`; posts on X are embedded with X's official widget, other links show as a card. Which lists are read is set by `VITE_AMBASSADOR_PROFILE` (`gnosis` by default, `sepolia` or `preview`, see `src/consts/ambassadors.ts`), and `?data=<profile>` in the URL overrides it; `?data=demo` shows bundled sample entries. Briefs are a checked-in file, `src/assets/ambassador-briefs.json` (deliberately not named `-index.json`, so it is not validated or published as a rewards index); the Briefs tab stays hidden while that file is empty.
+
+The Curate indexer URL above is a public endpoint, not an API key: Kleros [documents it as requiring no authentication](https://github.com/kleros/blockscout-kleros-api#environment-variables). Its path identifies the endpoint. If an authenticated indexer is introduced later, keep its credentials server-side; `VITE_*` variables are included in the public browser bundle and do not protect secrets.
 
 ### Public index endpoints
 

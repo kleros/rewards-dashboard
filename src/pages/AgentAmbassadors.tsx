@@ -367,15 +367,16 @@ function overviewStats(data: AmbassadorData): Stat[] {
 interface ContentBoxProps {
   entries: AmbassadorEntry[];
   walletFilter: string | null;
+  selectedKey: string | null;
+  onSelectEntry: (key: string | null) => void;
   onClearWallet: () => void;
 }
 
 // Always-visible list of entries, newest first. Clicking an entry shows its
 // description and a preview of the post in place of the list.
-function ContentBox({ entries, walletFilter, onClearWallet }: ContentBoxProps) {
+function ContentBox({ entries, walletFilter, selectedKey, onSelectEntry, onClearWallet }: ContentBoxProps) {
   const [search, setSearch] = useState("");
   const [list, setList] = useState<ListFilter>("all");
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const shown = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -386,7 +387,7 @@ function ContentBox({ entries, walletFilter, onClearWallet }: ContentBoxProps) {
       .sort((a, b) => b.submittedAt - a.submittedAt);
   }, [entries, walletFilter, list, search]);
 
-  const selected = entries.find((entry) => entry.key === selectedKey);
+  const selected = shown.find((entry) => entry.key === selectedKey);
 
   return (
     <Box>
@@ -397,12 +398,27 @@ function ContentBox({ entries, walletFilter, onClearWallet }: ContentBoxProps) {
         </MutedLabel>
         <Chips>
           {(["all", "standard", "high"] as ListFilter[]).map((option) => (
-            <Chip key={option} $active={list === option} onClick={() => setList(option)}>
+            <Chip
+              key={option}
+              $active={list === option}
+              onClick={() => {
+                setList(option);
+                onSelectEntry(null);
+              }}
+            >
               {option === "all" ? "All" : LIST_LABEL[option]}
             </Chip>
           ))}
         </Chips>
-        <Search type="search" placeholder="Search by title..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Search
+          type="search"
+          placeholder="Search by title..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            onSelectEntry(null);
+          }}
+        />
       </BoxHead>
 
       {walletFilter && !selected && (
@@ -415,7 +431,7 @@ function ContentBox({ entries, walletFilter, onClearWallet }: ContentBoxProps) {
       {selected ? (
         <DetailBody>
           <DetailTop>
-            <SecondaryButton onClick={() => setSelectedKey(null)}>← Back to entries</SecondaryButton>
+            <SecondaryButton onClick={() => onSelectEntry(null)}>← Back to entries</SecondaryButton>
             <Pill $tone={STATUS_TONE[selected.status]}>{selected.status}</Pill>
           </DetailTop>
           <MutedLabel>
@@ -462,7 +478,7 @@ function ContentBox({ entries, walletFilter, onClearWallet }: ContentBoxProps) {
             </thead>
             <tbody>
               {shown.map((entry) => (
-                <tr key={entry.key} onClick={() => setSelectedKey(entry.key)}>
+                <tr key={entry.key} onClick={() => onSelectEntry(entry.key)}>
                   <td>
                     <Clip title={entry.title}>{entry.title}</Clip>
                   </td>
@@ -556,6 +572,7 @@ export default function AgentAmbassadors() {
   const { phase, progress, errors, data, retry } = useAmbassadorEntries();
   const [activeTab, setActiveTab] = useState<string>(TABS[0]);
   const [walletFilter, setWalletFilter] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [now] = useState(() => Date.now());
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -618,6 +635,7 @@ export default function AgentAmbassadors() {
 
   const showAgentEntries = (row: Row) => {
     setWalletFilter(row.wallet as string);
+    setSelectedKey(null);
     contentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -659,7 +677,13 @@ export default function AgentAmbassadors() {
           <StatsRow stats={overviewStats(data)} />
 
           <div ref={contentRef}>
-            <ContentBox entries={data.entries} walletFilter={walletFilter} onClearWallet={() => setWalletFilter(null)} />
+            <ContentBox
+              entries={data.entries}
+              walletFilter={walletFilter}
+              selectedKey={selectedKey}
+              onSelectEntry={setSelectedKey}
+              onClearWallet={() => setWalletFilter(null)}
+            />
           </div>
 
           <Tabs tabs={TABS} active={activeTab} onSelect={setActiveTab} />

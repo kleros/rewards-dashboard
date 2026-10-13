@@ -11,6 +11,15 @@ import {
 } from "consts/ambassadors";
 import demoEntries from "assets/ambassador-demo-entries.json";
 import { ProgressState } from "utils/fetchSnapshots";
+import {
+  AmbassadorRemover,
+  AmbassadorRequest as RawRequest,
+  collectAmbassadorRemovers,
+  inAmbassadorSeason,
+  isSuccessfulRemoval,
+} from "utils/ambassadorRemovals";
+
+export type { AmbassadorRemover } from "utils/ambassadorRemovals";
 
 // Live data source: the Curate indexer (Envio) that the Curate app itself reads.
 // Every program entry is a Light Curate item on one of the two program lists with
@@ -56,12 +65,6 @@ export interface AmbassadorAgent {
   capped: boolean;
 }
 
-// A wallet that removed accepted entries that broke the policy after acceptance.
-export interface AmbassadorRemover {
-  wallet: string;
-  removals: number;
-}
-
 export interface AmbassadorData {
   entries: AmbassadorEntry[];
   agents: AmbassadorAgent[];
@@ -75,15 +78,6 @@ export interface AmbassadorData {
     removed: number;
     earned: bigint;
   };
-}
-
-interface RawRequest {
-  requestType: string; // RegistrationRequested | ClearingRequested
-  disputed: boolean;
-  resolved: boolean;
-  disputeOutcome: string; // None | Accept | Reject
-  submissionTime: string;
-  requester: string;
 }
 
 interface RawItem {
@@ -190,8 +184,7 @@ function deriveStatus(item: RawItem, registration: RawRequest): EntryStatus {
     default: {
       const removedLater = item.requests.some(
         (request) =>
-          request.requestType === "ClearingRequested" &&
-          request.resolved &&
+          isSuccessfulRemoval(request) &&
           Number(request.submissionTime) > Number(registration.submissionTime)
       );
       return removedLater && registration.disputeOutcome !== "Reject" ? "Removed" : "Rejected";
@@ -202,10 +195,12 @@ function deriveStatus(item: RawItem, registration: RawRequest): EntryStatus {
 // The wallet behind the latest removal request after the registration: the one
 // that removed the entry (status Removed) or is asking to (Removal requested).
 function removalRequester(item: RawItem, registration: RawRequest): string | undefined {
+  if (item.status !== "Absent" && item.status !== "ClearingRequested") return undefined;
   const removals = item.requests.filter(
     (request) =>
       request.requestType === "ClearingRequested" &&
-      Number(request.submissionTime) > Number(registration.submissionTime)
+      Number(request.submissionTime) > Number(registration.submissionTime) &&
+      (item.status === "ClearingRequested" ? !request.resolved : isSuccessfulRemoval(request))
   );
   return removals[removals.length - 1]?.requester.toLowerCase();
 }
@@ -281,14 +276,10 @@ export function channelOf(link: string): string {
   }
 }
 
-function inSeason(entry: AmbassadorEntry, profile: AmbassadorProfile): boolean {
-  if (profile.seasonStart && entry.submittedAt < profile.seasonStart) return false;
-  if (profile.seasonEnd && entry.submittedAt >= profile.seasonEnd) return false;
-  return true;
-}
-
 // Group entries by submitting wallet and apply the fixed reward rates.
-export function aggregate(entries: AmbassadorEntry[]): AmbassadorData {
+// Live removers are derived independently from the full request history. Demo
+// entries have no request history, so use their explicit removal attribution.
+export function aggregate(entries: AmbassadorEntry[], historicalRemovers?: AmbassadorRemover[]): AmbassadorData {
   const byWallet = new Map<string, AmbassadorEntry[]>();
   for (const entry of entries) {
     const bucket = byWallet.get(entry.submitter) ?? [];
@@ -333,7 +324,8 @@ export function aggregate(entries: AmbassadorEntry[]): AmbassadorData {
       removalsByWallet.set(entry.removalBy, (removalsByWallet.get(entry.removalBy) ?? 0) + 1);
     }
   }
-  const removers = [...removalsByWallet.entries()].map(([wallet, removals]) => ({ wallet, removals }));
+  const removers =
+    historicalRemovers ?? [...removalsByWallet.entries()].map(([wallet, removals]) => ({ wallet, removals }));
 
   return {
     entries,
@@ -366,12 +358,17 @@ export function useAmbassadorEntries(profile: AmbassadorProfile = AMBASSADOR_PRO
     setProgress({ done: 0, total: PAGE_SIZE, current: "Querying the Curate indexer…", startTime });
 
     try {
-      const entries = profile.demo
-        ? demoToEntries(profile)
-        : (await fetchAllItems(profile, setProgress, startTime))
-            .map((item) => toEntry(item, profile))
-            .filter((entry): entry is AmbassadorEntry => entry !== null && inSeason(entry, profile));
-      setData(aggregate(entries));
+      if (profile.demo) {
+        setData(aggregate(demoToEntries(profile)));
+      } else {
+        const items = await fetchAllItems(profile, setProgress, startTime);
+        const entries = items
+          .map((item) => toEntry(item, profile))
+          .filter(
+            (entry): entry is AmbassadorEntry => entry !== null && inAmbassadorSeason(entry.submittedAt, profile)
+          );
+        setData(aggregate(entries, collectAmbassadorRemovers(items, profile)));
+      }
       setPhase("done");
     } catch (error) {
       setErrors([error instanceof Error ? error.message : "unknown error"]);

@@ -72,6 +72,7 @@ const Nav = styled.nav`
   @media (max-width: 900px) {
     order: 3;
     width: 100%;
+    flex-wrap: wrap;
   }
 `;
 
