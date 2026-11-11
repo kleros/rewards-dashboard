@@ -3,10 +3,9 @@ import styled from "styled-components";
 
 import { PAGE_SIZE } from "consts/index";
 import { formatPNK } from "utils/format";
-import { layoutSpans } from "utils/tableSpans";
+import { CellValue, Row, layoutSpans, sortRows } from "utils/table";
 
-export type CellValue = string | bigint;
-export type Row = Record<string, CellValue>;
+export type { CellValue, Row };
 
 export interface Column {
   key: string;
@@ -203,11 +202,6 @@ const PageButton = styled.button`
   }
 `;
 
-function compareCells(a: CellValue, b: CellValue): number {
-  if (typeof a === "bigint" && typeof b === "bigint") return a < b ? -1 : a > b ? 1 : 0;
-  return String(a).localeCompare(String(b));
-}
-
 interface RewardsTableProps {
   columns: Column[];
   rows: Row[];
@@ -253,10 +247,7 @@ export default function RewardsTable({
     return rows.filter((row) => String(row[searchKey] ?? "").toLowerCase().includes(q));
   }, [rows, search, searchKey]);
 
-  const sorted = useMemo(() => {
-    const dir = sortAsc ? 1 : -1;
-    return [...filtered].sort((a, b) => dir * compareCells(a[sortKey], b[sortKey]));
-  }, [filtered, sortKey, sortAsc]);
+  const sorted = useMemo(() => sortRows(filtered, sortKey, sortAsc), [filtered, sortKey, sortAsc]);
 
   useEffect(() => {
     setPage(0);

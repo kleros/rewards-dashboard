@@ -22,6 +22,13 @@ export interface AtqSplit {
   removals: bigint;
 }
 
+// A month's ATQ split, in total and by recipient (keyed as the snapshot keys
+// them).
+export interface AtqBreakdown {
+  total: AtqSplit;
+  byRecipient: Record<string, AtqSplit>;
+}
+
 // The ATQ lines' amounts by kind, or null when any line does not say its kind.
 export function splitAtqLines(lines: RewardLine[] | undefined): AtqSplit | null {
   let submissions = 0n;
@@ -35,30 +42,27 @@ export function splitAtqLines(lines: RewardLine[] | undefined): AtqSplit | null 
   return { submissions, removals };
 }
 
-// Each recipient's ATQ split for a month, keyed as the snapshot keys them —
-// or null when the month cannot be split: a line that does not say its kind,
-// or lines that do not add up to the published ATQ total to the wei (so a
-// split never shows amounts that disagree with the month's ATQ figure).
-export function splitAtqByRecipient(snapshot: CurateSnapshot): Record<string, AtqSplit> | null {
-  const byRecipient: Record<string, AtqSplit> = {};
-  let sum = 0n;
-  for (const [addr, recipient] of Object.entries(snapshot.recipients ?? {})) {
-    const split = splitAtqLines(recipient.atq);
-    if (split === null) return null;
-    byRecipient[addr] = split;
-    sum += split.submissions + split.removals;
-  }
-  return sum === toWei(snapshot.totals?.atq) ? byRecipient : null;
-}
-
-// A month's ATQ split, or null when it cannot be split (see above).
-export function splitAtq(snapshot: CurateSnapshot): AtqSplit | null {
-  const byRecipient = splitAtqByRecipient(snapshot);
-  if (byRecipient === null) return null;
+// Splits added up, or null when any of them is (it cannot be split then).
+export function sumAtqSplits(splits: (AtqSplit | null)[]): AtqSplit | null {
   const total: AtqSplit = { submissions: 0n, removals: 0n };
-  for (const split of Object.values(byRecipient)) {
+  for (const split of splits) {
+    if (split === null) return null;
     total.submissions += split.submissions;
     total.removals += split.removals;
   }
   return total;
+}
+
+// A month's ATQ split, or null when the month cannot be split: a line that
+// does not say its kind, or lines that do not add up to the published ATQ
+// total to the wei (so a split never disagrees with the month's ATQ figure).
+export function breakDownAtq(snapshot: CurateSnapshot): AtqBreakdown | null {
+  const byRecipient: Record<string, AtqSplit> = {};
+  for (const [addr, recipient] of Object.entries(snapshot.recipients ?? {})) {
+    const split = splitAtqLines(recipient?.atq);
+    if (split === null) return null;
+    byRecipient[addr] = split;
+  }
+  const total = sumAtqSplits(Object.values(byRecipient)) as AtqSplit;
+  return total.submissions + total.removals === toWei(snapshot.totals?.atq) ? { total, byRecipient } : null;
 }

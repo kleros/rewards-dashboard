@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { CurateSnapshot, RewardLine } from "../src/hooks/useCurateRewards.ts";
-import { atqKind, splitAtq, splitAtqByRecipient, splitAtqLines } from "../src/utils/curateAtq.ts";
-import { layoutSpans } from "../src/utils/tableSpans.ts";
+import { atqKind, breakDownAtq, splitAtqLines, sumAtqSplits } from "../src/utils/curateAtq.ts";
+import { layoutSpans, sortRows } from "../src/utils/table.ts";
 
 const PNK = (n: number | string): string => (BigInt(Math.round(Number(n) * 1000)) * 10n ** 15n).toString();
 
@@ -22,6 +22,9 @@ const aggregate = (status: string, amount: string): RewardLine => ({
   tagAddress: "",
   amount,
 });
+
+const splitAtq = (snapshot: CurateSnapshot) => breakDownAtq(snapshot)?.total ?? null;
+const splitAtqByRecipient = (snapshot: CurateSnapshot) => breakDownAtq(snapshot)?.byRecipient ?? null;
 
 const month = (atq: string, recipients: Record<string, RewardLine[]>): CurateSnapshot => ({
   totals: { atq },
@@ -89,6 +92,30 @@ test("splits a month without ATQ into nothing, whatever shape its totals take", 
   assert.deepEqual(splitAtq(month("0", { "0xa": [] })), { submissions: 0n, removals: 0n });
   assert.deepEqual(splitAtq({}), { submissions: 0n, removals: 0n });
   assert.deepEqual(splitAtq({ totals: {}, recipients: { "0xa": {} } }), { submissions: 0n, removals: 0n });
+});
+
+test("adds splits up, and cannot when any of them cannot be split", () => {
+  const a = { submissions: 3n, removals: 1n };
+  const b = { submissions: 2n, removals: 5n };
+  assert.deepEqual(sumAtqSplits([a, b]), { submissions: 5n, removals: 6n });
+  assert.deepEqual(sumAtqSplits([]), { submissions: 0n, removals: 0n });
+  assert.equal(sumAtqSplits([a, null, b]), null);
+});
+
+test("sorts rows by a column, a row without a value there last in either direction", () => {
+  const rows = [
+    { month: "2026-02" },
+    { month: "2026-10", atqSubmissions: 60000n },
+    { month: "2026-08", atqSubmissions: 0n },
+    { month: "2026-05" },
+    { month: "2026-04", atqSubmissions: 60000n },
+    { month: "2026-09", atqSubmissions: 30000n },
+  ];
+  const months = (ascending: boolean) => sortRows(rows, "atqSubmissions", ascending).map((r) => r.month);
+  assert.deepEqual(months(false), ["2026-10", "2026-04", "2026-09", "2026-08", "2026-02", "2026-05"]);
+  assert.deepEqual(months(true), ["2026-08", "2026-09", "2026-10", "2026-04", "2026-02", "2026-05"]);
+  assert.deepEqual(sortRows(rows, "month", true).map((r) => r.month), ["2026-02", "2026-04", "2026-05", "2026-08", "2026-09", "2026-10"]);
+  assert.equal(rows[0].month, "2026-02", "the rows given are left as they were");
 });
 
 test("lays out cells that cover several columns, never past the row's end", () => {

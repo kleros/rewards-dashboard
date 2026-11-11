@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import curateIndex from "assets/curate-rewards-index.json";
+import { AtqBreakdown, AtqSplit, breakDownAtq, sumAtqSplits } from "utils/curateAtq";
 import { fetchAllWithProgress, ProgressState } from "utils/fetchSnapshots";
 import { toWei } from "utils/format";
 
@@ -40,6 +41,9 @@ export interface CurateSnapshot {
 export interface CuratePeriod {
   label: string;
   snapshot: CurateSnapshot;
+  // The month's ATQ split into submissions and removals, or null when it
+  // cannot be split (see utils/curateAtq).
+  atq: AtqBreakdown | null;
 }
 
 export interface CurateTotals {
@@ -52,6 +56,8 @@ export interface CurateTotals {
 export interface CurateData {
   periods: CuratePeriod[]; // newest first
   grandTotals: Record<string, CurateTotals>;
+  // Every month's ATQ split, added up; null when any month's cannot be split.
+  atqAllTime: AtqSplit | null;
 }
 
 export const sumLines = (lines: RewardLine[] | undefined): bigint =>
@@ -152,7 +158,7 @@ export function useCurateRewards() {
         .filter(({ data: raw }) => typeof raw === "object" && raw !== null)
         .map(({ item, data: raw }) => {
           const snapshot = raw as CurateSnapshot;
-          return { label: labelFor(item.url, snapshot), snapshot };
+          return { label: labelFor(item.url, snapshot), snapshot, atq: breakDownAtq(snapshot) };
         })
         .sort((a, b) => (a.label < b.label ? 1 : -1));
 
@@ -177,7 +183,7 @@ export function useCurateRewards() {
         setPhase("error");
         return;
       }
-      setData({ periods, grandTotals });
+      setData({ periods, grandTotals, atqAllTime: sumAtqSplits(periods.map((p) => p.atq?.total ?? null)) });
       setPhase("done");
     } catch (err) {
       setErrors([...fetchErrors, `aggregation failed: ${err instanceof Error ? err.message : "unknown error"}`]);
