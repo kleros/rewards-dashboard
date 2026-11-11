@@ -100,7 +100,7 @@ const SECTIONS = [
     eyebrow: "Proof of Humanity program",
     title: "Proof of Humanity Rewards",
     description:
-      "PNK airdrop claimed once per registered human in Proof of Humanity, distributed on Gnosis since January 2026.",
+      "PNK airdrop claimed once per registered human in Proof of Humanity, plus a stake bonus for keeping it staked six months, distributed on Gnosis since January 2026.",
   },
   {
     to: "/agent-ambassadors",

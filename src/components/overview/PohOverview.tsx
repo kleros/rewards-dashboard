@@ -7,6 +7,7 @@ import { fmtCompact, fmtWhole } from "components/charts/utils";
 import { PohData } from "hooks/usePohRewards";
 import { usePnkTotalSupply } from "hooks/usePnkTotalSupply";
 import { formatDuration, formatMonthLabel, formatPNK, formatPNKWhole, monthSpan, toPnkNumber } from "utils/format";
+import { countHumans, sumAmounts } from "utils/pohRewards";
 
 import {
   ChartHead,
@@ -19,6 +20,8 @@ import {
   HeroLatest,
   HeroNote,
   HeroNum,
+  Legend,
+  LegendKey,
   SmallMultiples,
   SmallMultiplesGrid,
   Supply,
@@ -26,6 +29,7 @@ import {
   SupplyContext,
   SupplyFill,
   SupplyTrack,
+  Swatch,
   Tile,
   TileDesc,
   TileGrid,
@@ -41,36 +45,58 @@ import {
 interface MonthRow {
   label: string;
   claims: number;
+  bonuses: number;
+  humans: number;
+  airdrop: number; // PNK
+  stakeBonus: number; // PNK
   total: number; // PNK
-  cumulative: number; // PNK claimed up to and including this month
+  cumulative: number; // PNK paid up to and including this month
 }
 
 function usePohOverview(data: PohData) {
   const supplyWei = usePnkTotalSupply();
   return useMemo(() => {
-    let cumulative = 0;
+    let cumulativeWei = 0n;
     const ascending: MonthRow[] = [...data.months].reverse().map((month) => {
-      const total = toPnkNumber(month.total);
-      cumulative += total;
-      return { label: month.label, claims: month.recipients.length, total, cumulative };
+      cumulativeWei += month.total;
+      return {
+        label: month.label,
+        claims: month.claims,
+        bonuses: month.bonuses,
+        humans: month.humans,
+        airdrop: toPnkNumber(month.airdrop),
+        stakeBonus: toPnkNumber(month.stakeBonus),
+        total: toPnkNumber(month.total),
+        cumulative: toPnkNumber(cumulativeWei),
+      };
     });
 
-    const totalWei = data.recipients.reduce((sum, reward) => sum + reward.amount, 0n);
-    const humans = data.recipients.length;
+    const claims = data.rewards.filter((reward) => reward.kind === "airdrop");
+    const bonuses = data.rewards.filter((reward) => reward.kind === "stakeBonus");
+    const airdropWei = sumAmounts(claims);
+    const bonusWei = sumAmounts(bonuses);
+    const totalWei = airdropWei + bonusWei;
     const span =
       ascending.length > 0 ? monthSpan(ascending[0].label, ascending[ascending.length - 1].label) : null;
 
-    // Only call the airdrop "fixed" if every fetched claim really is the same
+    // Only call an amount "fixed" if every fetched payment really is the same
     // amount — otherwise present the average as an average.
-    const uniformAmount = humans > 0 && data.recipients.every((r) => r.amount === data.recipients[0].amount);
+    const uniform = (rewards: typeof claims) => rewards.length > 0 && rewards.every((r) => r.amount === rewards[0].amount);
 
     return {
       ascending,
       months: data.months.length,
-      humans,
+      humans: countHumans(data.rewards),
+      claims: claims.length,
+      bonuses: bonuses.length,
+      bonusHumans: countHumans(bonuses),
+      firstBonusMonth: ascending.find((row) => row.bonuses > 0)?.label ?? null,
       totalWei,
-      perClaimWei: humans > 0 ? totalWei / BigInt(humans) : 0n,
-      uniformAmount,
+      bonusWei,
+      perClaimWei: claims.length > 0 ? airdropWei / BigInt(claims.length) : 0n,
+      uniformAmount: uniform(claims),
+      perBonusWei: bonuses.length > 0 ? bonusWei / BigInt(bonuses.length) : 0n,
+      uniformBonus: uniform(bonuses),
       duration: span === null ? null : formatDuration(span),
       supplyPct: Number((totalWei * 10000n) / supplyWei) / 100,
       supplyWei,
@@ -85,20 +111,29 @@ export function PohOverview({ data }: { data: PohData }) {
 
   const first = m.ascending[0];
   const latest = m.ascending[m.ascending.length - 1];
+  const hasBonus = m.bonuses > 0;
 
-  // Single series: the chart title names it, so no legend box.
-  const series = [{ name: "Claims", color: theme.seriesA }];
+  // With no stake bonus loaded the airdrop is the only series: the chart title
+  // names it, so no legend box.
+  const series = hasBonus
+    ? [
+        { name: "Airdrop claims", color: theme.seriesA },
+        { name: "Stake bonus", color: theme.seriesB },
+      ]
+    : [{ name: "Claims", color: theme.seriesA }];
   const points: StackPoint[] = m.ascending.map((row) => ({
     label: row.label,
-    values: [row.total],
-    tipNote: `${row.claims.toLocaleString()} claims`,
+    values: hasBonus ? [row.airdrop, row.stakeBonus] : [row.airdrop],
+    tipNote:
+      `${row.claims.toLocaleString()} claims` +
+      (row.bonuses > 0 ? ` · ${row.bonuses.toLocaleString()} stake bonus${row.bonuses === 1 ? "" : "es"}` : ""),
   }));
 
   return (
     <>
       <Hero>
         <HeroFig>
-          <Eyebrow>PNK claimed to date</Eyebrow>
+          <Eyebrow>PNK distributed to date</Eyebrow>
           <HeroNum>
             {formatPNKWhole(m.totalWei)}
             <Unit>PNK</Unit>
@@ -108,20 +143,42 @@ export function PohOverview({ data }: { data: PohData }) {
             <b>
               once — {m.uniformAmount ? "a fixed" : "on average"} {formatPNKWhole(m.perClaimWei)} PNK
             </b>
-            , paid on-chain on Gnosis the moment they claim. The chart follows verification, not a payroll:{" "}
-            <b>each column is humans choosing to claim</b> that month.
+            , paid on-chain on Gnosis the moment they claim.
+            {hasBonus && (
+              <>
+                {" "}
+                Keeping at least 1,200 PNK staked in the Humanity court for six months earns{" "}
+                <b>
+                  the stake bonus, {m.uniformBonus ? "" : "on average "}
+                  {formatPNKWhole(m.perBonusWei)} PNK more
+                </b>
+                : {formatPNKWhole(m.bonusWei)} PNK to {m.bonusHumans.toLocaleString()} humans so far.
+              </>
+            )}{" "}
+            The chart follows verification, not a payroll: <b>each column is humans choosing to claim</b> that month
+            {hasBonus ? ", plus the stake bonuses paid in it" : ""}.
           </HeroNote>
           <HeroLatest>
             Latest month · {formatMonthLabel(latest.label)}
             <br />
-            <b>{fmtWhole(latest.total)}</b> PNK to <b>{latest.claims.toLocaleString()}</b> humans
+            <b>{fmtWhole(latest.total)}</b> PNK to <b>{latest.humans.toLocaleString()}</b> humans
           </HeroLatest>
         </HeroFig>
         <HeroChart>
           <ChartHead>
             <ChartTitle>
-              PNK claimed per month, {formatMonthLabel(first.label)} – {formatMonthLabel(latest.label)}
+              PNK paid per month, {formatMonthLabel(first.label)} – {formatMonthLabel(latest.label)}
             </ChartTitle>
+            {hasBonus && (
+              <Legend>
+                {series.map((s) => (
+                  <LegendKey key={s.name}>
+                    <Swatch $color={s.color} />
+                    {s.name}
+                  </LegendKey>
+                ))}
+              </Legend>
+            )}
           </ChartHead>
           <StackedColumnChart points={points} series={series} />
         </HeroChart>
@@ -130,7 +187,7 @@ export function PohOverview({ data }: { data: PohData }) {
       <TileGrid>
         <Tile>
           <TileValue>
-            {m.humans.toLocaleString()}
+            {m.claims.toLocaleString()}
             <TileUnit>humans</TileUnit>
           </TileValue>
           <TileDesc>
@@ -148,22 +205,37 @@ export function PohOverview({ data }: { data: PohData }) {
               : "Average airdrop received per verified human across all claims to date."}
           </TileDesc>
         </Tile>
-        <Tile>
-          <TileValue>
-            {latest.claims.toLocaleString()}
-            <TileUnit>claims in {formatMonthLabel(latest.label)}</TileUnit>
-          </TileValue>
-          <TileDesc>Humans who claimed in the latest month, read live from the PoH v2 subgraph.</TileDesc>
-        </Tile>
+        {hasBonus && m.firstBonusMonth !== null ? (
+          <Tile>
+            <TileValue>
+              {m.bonuses.toLocaleString()}
+              <TileUnit>stake bonuses</TileUnit>
+            </TileValue>
+            <TileDesc>
+              {formatPNKWhole(m.perBonusWei)} PNK more{m.uniformBonus ? " each" : " on average"}, paid since{" "}
+              {formatMonthLabel(m.firstBonusMonth)} to humans who kept at least 1,200 PNK staked in the Humanity court
+              for six months after claiming.
+            </TileDesc>
+          </Tile>
+        ) : (
+          <Tile>
+            <TileValue>
+              {latest.claims.toLocaleString()}
+              <TileUnit>claims in {formatMonthLabel(latest.label)}</TileUnit>
+            </TileValue>
+            <TileDesc>Humans who claimed in the latest month, read live from the PoH v2 subgraph.</TileDesc>
+          </Tile>
+        )}
       </TileGrid>
 
       <SmallMultiples>
         <h3>
-          {m.humans.toLocaleString()} humans in {m.months} month{m.months === 1 ? "" : "s"}. One claim each.
+          {m.claims.toLocaleString()} humans in {m.months} month{m.months === 1 ? "" : "s"}. One claim each.
         </h3>
         <p>
           The two charts share the same timeline. Claims arrive as humans verify — <b>the airdrop rewards personhood,
           not activity</b> — and the running total only ever goes up.
+          {hasBonus && <> The stake bonus follows each claim by at least six months.</>}
         </p>
         <SmallMultiplesGrid>
           <figure>
@@ -180,7 +252,7 @@ export function PohOverview({ data }: { data: PohData }) {
             />
           </figure>
           <figure>
-            <figcaption>Cumulative PNK claimed</figcaption>
+            <figcaption>Cumulative PNK distributed</figcaption>
             <FigSub>
               {fmtWhole(first.cumulative)} after {formatMonthLabel(first.label)} · {fmtWhole(latest.cumulative)} after{" "}
               {formatMonthLabel(latest.label)}
@@ -219,7 +291,7 @@ export function PohToDate({ data }: { data: PohData }) {
         <ToDateItem>
           <div className="n">{m.months}</div>
           <div className="t">
-            months of claims
+            months of payments
             <br />
             since {formatMonthLabel(first.label)}
           </div>
@@ -240,6 +312,16 @@ export function PohToDate({ data }: { data: PohData }) {
             {m.uniformAmount ? "fixed for everyone" : "on average"}
           </div>
         </ToDateItem>
+        {m.firstBonusMonth !== null && (
+          <ToDateItem>
+            <div className="n">{m.bonuses.toLocaleString()}</div>
+            <div className="t">
+              stake bonuses paid
+              <br />
+              since {formatMonthLabel(m.firstBonusMonth)}
+            </div>
+          </ToDateItem>
+        )}
         <Supply>
           <SupplyContext>
             The all-time total is <b>about {m.supplyPct}% of PNK total supply</b>
