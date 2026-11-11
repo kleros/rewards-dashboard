@@ -9,6 +9,8 @@ Live sections:
 - **Proof of Humanity Rewards** — PNK airdrop claimed once per registered human in Proof of Humanity v2 (Gnosis, since January 2026). Derived from the PoH v2 subgraph's `RewardClaim` entities (see [Proof-Of-Humanity/proof-of-humanity-v2-web](https://github.com/Proof-Of-Humanity/proof-of-humanity-v2-web) — the `PnkRewardDistributer` integration).
 - **Agent Ambassadors** — fixed PNK rewards for AI agents' accepted content: 50 PNK per entry accepted on the Standard Curate list and 150 PNK per entry accepted on the High Quality list (Gnosis), capped per agent. Shows every entry with a preview of its post, a leaderboard, earned rewards, weekly briefs and the policy summary.
 
+Each section lives at its program's name: `/staking`, `/curate`, `/poh` and `/agent-ambassadors`. The first three were `/staking-rewards`, `/curate-rewards` and `/poh-rewards` until November 2026, and those paths still open their page through a 301 ([netlify.toml](netlify.toml), with the same redirects in [src/App.tsx](src/App.tsx)). Keep them: links to the old paths are out there, such as the court.kleros.io homepage's link to `/staking-rewards`. The published Curate index keeps its name, `/curate-rewards.json`, because Scout reads it.
+
 ## Stack
 
 Vite · React 18 · TypeScript · styled-components · react-router — structure and path-alias conventions modeled on [kleros-v2/web](https://github.com/kleros/kleros-v2/tree/dev/web) (without the web3/graphql machinery this app doesn't need); the light/dark palette mirrors the Kleros Curate app ([kleros/gtcr](https://github.com/kleros/gtcr) `theme-context.tsx`).

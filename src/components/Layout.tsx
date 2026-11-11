@@ -196,9 +196,9 @@ export default function Layout({ themeName, toggleTheme }: LayoutProps) {
             <Logo src={logoUrl} alt="" /> Kleros Rewards <small>Dashboard</small>
           </Brand>
           <Nav>
-            <StyledNavLink to="/staking-rewards">Staking</StyledNavLink>
-            <StyledNavLink to="/curate-rewards">Curate</StyledNavLink>
-            <StyledNavLink to="/poh-rewards">Proof of Humanity</StyledNavLink>
+            <StyledNavLink to="/staking">Staking</StyledNavLink>
+            <StyledNavLink to="/curate">Curate</StyledNavLink>
+            <StyledNavLink to="/poh">Proof of Humanity</StyledNavLink>
             <StyledNavLink to="/agent-ambassadors">Agent Ambassadors</StyledNavLink>
           </Nav>
           <ThemeButton onClick={toggleTheme} title="Toggle theme">

@@ -82,21 +82,21 @@ const ComingSoon = styled.div`
 
 const SECTIONS = [
   {
-    to: "/staking-rewards",
+    to: "/staking",
     eyebrow: "Juror incentive program",
     title: "Staking Rewards",
     description:
       "Monthly PNK rewards for jurors staking in Kleros Court, distributed on Ethereum Mainnet and Gnosis since January 2021.",
   },
   {
-    to: "/curate-rewards",
+    to: "/curate",
     eyebrow: "Curator incentive program",
     title: "Curate Rewards",
     description:
       "Monthly PNK rewards for submissions, removals and ATQ across the Address Tags, Tokens and Domains registries, distributed on Gnosis since April 2022.",
   },
   {
-    to: "/poh-rewards",
+    to: "/poh",
     eyebrow: "Proof of Humanity program",
     title: "Proof of Humanity Rewards",
     description:
