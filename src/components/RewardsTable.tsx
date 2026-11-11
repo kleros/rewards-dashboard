@@ -3,15 +3,21 @@ import styled from "styled-components";
 
 import { PAGE_SIZE } from "consts/index";
 import { formatPNK } from "utils/format";
+import { CellValue, Row, layoutSpans, sortRows } from "utils/table";
 
-export type CellValue = string | bigint;
-export type Row = Record<string, CellValue>;
+export type { CellValue, Row };
 
 export interface Column {
   key: string;
   label: string;
   align?: "left" | "right";
   render?: (row: Row) => ReactNode;
+  // How many columns this column's cell covers in a row (default 1): the
+  // columns it covers draw no cell of their own in that row.
+  span?: (row: Row) => number;
+  // The same for the footer: this column's footer entry covers that many
+  // columns, and the footer entries of the columns it covers are not drawn.
+  footerSpan?: number;
 }
 
 const Controls = styled.div`
@@ -196,11 +202,6 @@ const PageButton = styled.button`
   }
 `;
 
-function compareCells(a: CellValue, b: CellValue): number {
-  if (typeof a === "bigint" && typeof b === "bigint") return a < b ? -1 : a > b ? 1 : 0;
-  return String(a).localeCompare(String(b));
-}
-
 interface RewardsTableProps {
   columns: Column[];
   rows: Row[];
@@ -246,10 +247,7 @@ export default function RewardsTable({
     return rows.filter((row) => String(row[searchKey] ?? "").toLowerCase().includes(q));
   }, [rows, search, searchKey]);
 
-  const sorted = useMemo(() => {
-    const dir = sortAsc ? 1 : -1;
-    return [...filtered].sort((a, b) => dir * compareCells(a[sortKey], b[sortKey]));
-  }, [filtered, sortKey, sortAsc]);
+  const sorted = useMemo(() => sortRows(filtered, sortKey, sortAsc), [filtered, sortKey, sortAsc]);
 
   useEffect(() => {
     setPage(0);
@@ -305,10 +303,16 @@ export default function RewardsTable({
               ) : (
                 pageRows.map((row, i) => (
                   <Tr key={i} $clickable={!!onRowClick} onClick={() => onRowClick?.(row)}>
-                    {columns.map((col) => {
+                    {layoutSpans(columns.length, (c) => columns[c].span?.(row)).map(([c, span]) => {
+                      const col = columns[c];
                       const value = row[col.key];
                       return (
-                        <Td key={col.key} $align={col.align ?? "left"} $zero={value === 0n}>
+                        <Td
+                          key={col.key}
+                          colSpan={span > 1 ? span : undefined}
+                          $align={col.align ?? "left"}
+                          $zero={value === 0n}
+                        >
                           {col.render ? col.render(row) : typeof value === "bigint" ? formatPNK(value) : value}
                         </Td>
                       );
@@ -320,9 +324,13 @@ export default function RewardsTable({
             {footer && pageRows.length > 0 && (
               <tfoot>
                 <tr>
-                  {footer.map((cell, i) => (
-                    <FootTd key={columns[i]?.key ?? i} $align={columns[i]?.align ?? "left"}>
-                      {cell}
+                  {layoutSpans(footer.length, (c) => columns[c]?.footerSpan).map(([c, span]) => (
+                    <FootTd
+                      key={columns[c]?.key ?? c}
+                      colSpan={span > 1 ? span : undefined}
+                      $align={columns[c]?.align ?? "left"}
+                    >
+                      {footer[c]}
                     </FootTd>
                   ))}
                 </tr>
