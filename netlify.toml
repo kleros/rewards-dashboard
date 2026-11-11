@@ -22,6 +22,29 @@
     # its edge cache on each deploy, so no long max-age is wanted here.
     Cache-Control = "public, max-age=0, must-revalidate"
 
+# The pages dropped their "-rewards" suffix (the domain already says rewards).
+# Links to the old paths keep working through a permanent redirect; the
+# court.kleros.io homepage links /staking-rewards. Keep these ABOVE the SPA
+# fallback: Netlify applies the first rule that matches. A rule matches with or
+# without a trailing slash and forwards the query string, but is case-sensitive;
+# the same redirects in src/App.tsx catch other spellings once the app loads.
+# /curate-rewards.json is a data file, not a page, and keeps its name: Scout
+# reads it.
+[[redirects]]
+  from = "/staking-rewards"
+  to = "/staking"
+  status = 301
+
+[[redirects]]
+  from = "/curate-rewards"
+  to = "/curate"
+  status = 301
+
+[[redirects]]
+  from = "/poh-rewards"
+  to = "/poh"
+  status = 301
+
 # SPA fallback for react-router BrowserRouter deep links. Deliberately UNFORCED
 # (no `force`/`!`): Netlify serves an existing static file before applying an
 # unforced rewrite ("file shadowing"), so real files like /curate-rewards.json

@@ -198,7 +198,7 @@ Conventions to keep for consistency:
 
 ## Step 6 — Register the section
 
-1. **Route** — `src/App.tsx`: `<Route path="poh-rewards" element={<PohRewards />} />`.
+1. **Route** — `src/App.tsx`: `<Route path="poh" element={<PohRewards />} />`. Name the path after the program alone (`/poh`, not `/poh-rewards`): the domain already says rewards.
 2. **Home card** — `src/pages/Home.tsx`: add an entry to `SECTIONS` (eyebrow, title, description with the program's start date, route). The "More reward programs — coming soon" card stays last.
 3. **Header link** — `src/components/Layout.tsx`: add a `StyledNavLink` next to Staking/Curate.
 4. **README** — add the section to the "Live sections" list and the data-source bullet under "How the data works".
