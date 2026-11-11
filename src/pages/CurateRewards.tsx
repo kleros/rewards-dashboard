@@ -35,7 +35,7 @@ import {
   sumLines,
   useCurateRewards,
 } from "hooks/useCurateRewards";
-import { AtqBreakdown, AtqSplit, atqKind } from "utils/curateAtq";
+import { AtqSplit, atqCells, atqKind, monthAtqSplit, shownAtqSplit } from "utils/curateAtq";
 import {
   downloadBlob,
   formatDuration,
@@ -51,8 +51,17 @@ import {
 const SUMMARY = "Summary";
 const MONTHLY = "Monthly Totals";
 
-// ATQ that cannot be split into submissions and removals: shown once, across
-// the two ATQ columns, with what it is.
+// ATQ that cannot be split into submissions and removals: one amount for both
+// ATQ columns, drawn as a band across them with its number centered, so it
+// never reads as either column's.
+const BothBand = styled.span`
+  display: block;
+  padding: 1px 10px;
+  border: 1px solid ${({ theme }) => theme.stroke};
+  border-radius: 6px;
+  text-align: center;
+`;
+
 const BothNote = styled.span`
   margin-right: 8px;
   font-size: 11px;
@@ -65,18 +74,11 @@ const NOT_SPLIT_TITLE =
 
 function AtqNotSplit({ amount }: { amount: bigint }) {
   return (
-    <span title={NOT_SPLIT_TITLE}>
+    <BothBand title={NOT_SPLIT_TITLE}>
       <BothNote>submissions + removals</BothNote>
       {formatPNK(amount)}
-    </span>
+    </BothBand>
   );
-}
-
-// The one rule for showing a month's ATQ split, in its stat cards and its
-// recipient columns alike: when it can be split and the month has ATQ at all
-// (a month without ATQ keeps one ATQ card and column).
-function shownAtq(period: CuratePeriod | undefined): AtqBreakdown | null {
-  return period?.atq && toWei(period.snapshot.totals?.atq) > 0n ? period.atq : null;
 }
 
 const Pill = styled.span<{ $kind: "sub" | "rem" | "atq" }>`
@@ -112,13 +114,12 @@ function walletRows(snapshot: CurateSnapshot, atqSplit: Record<string, AtqSplit>
     const submissions = sumLines(recipient.submissions);
     const removals = sumLines(recipient.removals);
     const atq = sumLines(recipient.atq);
-    const split = atqSplit?.[addr];
     return {
       addr,
       submissions,
       removals,
       atq,
-      ...(split ? { atqSubmissions: split.submissions, atqRemovals: split.removals } : {}),
+      ...atqCells(atqSplit?.[addr] ?? null),
       total: submissions + removals + atq,
     };
   });
@@ -129,7 +130,8 @@ function grandRows(data: CurateData): Row[] {
 }
 
 function monthlyRows(data: CurateData): Row[] {
-  return data.periods.map(({ label, snapshot, atq: atqSplit }) => {
+  return data.periods.map((period) => {
+    const { label, snapshot } = period;
     const totals = snapshot.totals ?? {};
     const submissions = toWei(totals.submissions);
     const entryTotal = countTotalEntries(snapshot);
@@ -143,9 +145,9 @@ function monthlyRows(data: CurateData): Row[] {
       avgSubmission: avgWei(submissions, countEntries(snapshot, "submissions")) ?? -1n,
       removals: toWei(totals.removals),
       atq: toWei(totals.atq),
-      // Left out for a month whose ATQ cannot be split: its ATQ is then shown
+      // None for a month whose ATQ cannot be split: its ATQ is then shown
       // once, across both ATQ columns (see monthlyColumns), and sorts last.
-      ...(atqSplit ? { atqSubmissions: atqSplit.total.submissions, atqRemovals: atqSplit.total.removals } : {}),
+      ...atqCells(monthAtqSplit(period)),
       total: toWei(totals.total),
     };
   });
@@ -273,7 +275,7 @@ function periodStats(tab: string, data: CurateData): Stat[] {
       removals: toWei(totals.removals),
       avgRemoval: avgWei(toWei(totals.removals), countEntries(snapshot, "removals")),
       atq: toWei(totals.atq),
-      atqSplit: shownAtq(period)?.total ?? null,
+      atqSplit: shownAtqSplit(period)?.total ?? null,
     }),
   ];
 }
@@ -391,7 +393,7 @@ function WalletDetail({ address, periods, onBack }: WalletDetailProps) {
   }
 
   // An ATQ line says what it paid for: an ATQ submission or an ATQ removal
-  // (see utils/curateAtq) — or neither, for an aggregate of both.
+  // (see utils/curateAtq) — or neither, when it does not say.
   const kindLabel = (line: RewardLine & { kind: "sub" | "rem" | "atq" }): string => {
     if (line.kind === "sub") return "Submission";
     if (line.kind === "rem") return "Removal";
@@ -454,7 +456,7 @@ function WalletDetail({ address, periods, onBack }: WalletDetailProps) {
                             <MutedLabel as="span">
                               Aggregate reward
                               {line.kind === "atq" && atqKind(line) === null
-                                ? ", not split between ATQ submissions and removals"
+                                ? " for ATQ submissions, removals or both (not published which)"
                                 : ""}{" "}
                               — no itemized breakdown published for this month
                             </MutedLabel>
@@ -505,17 +507,17 @@ export default function CurateRewards() {
 
   // The open month's ATQ by recipient, when it is shown split (null on the
   // Monthly Totals and Summary tabs, and for months that cannot be split).
-  const monthAtqSplit = useMemo(() => {
+  const openMonthAtq = useMemo(() => {
     if (!data || isMonthly || activeTab === SUMMARY) return null;
-    return shownAtq(data.periods.find((p) => p.label === activeTab))?.byRecipient ?? null;
+    return shownAtqSplit(data.periods.find((p) => p.label === activeTab))?.byRecipient ?? null;
   }, [data, activeTab, isMonthly]);
 
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     if (isMonthly) return monthlyRows(data);
     if (activeTab === SUMMARY) return grandRows(data);
-    return walletRows(data.periods.find((p) => p.label === activeTab)?.snapshot ?? {}, monthAtqSplit);
-  }, [data, activeTab, isMonthly, monthAtqSplit]);
+    return walletRows(data.periods.find((p) => p.label === activeTab)?.snapshot ?? {}, openMonthAtq);
+  }, [data, activeTab, isMonthly, openMonthAtq]);
 
   // Heat scale over the per-submission averages and bar scale over the month
   // totals — computed on the monthly rows, consumed by the table renders.
@@ -576,7 +578,7 @@ export default function CurateRewards() {
     // The ATQ split columns follow the table: always on Monthly Totals (empty
     // for a month that cannot be split), and on a month that is shown split.
     // "ATQ rewards" stays, so every export keeps each month's whole ATQ.
-    const atqSplitColumns = isMonthly || monthAtqSplit !== null;
+    const atqSplitColumns = isMonthly || openMonthAtq !== null;
     const atqSplitCell = (value: unknown) => (typeof value === "bigint" ? formatPNK(value) : "");
     const header = [
       isMonthly ? "Month" : "Recipient",
@@ -649,7 +651,7 @@ export default function CurateRewards() {
               columns={
                 isMonthly && monthly
                   ? monthlyColumns(monthly.heat.at, monthly.maxTotal, theme.seriesA, monthly.atqSplitAllTime)
-                  : walletColumns(monthAtqSplit !== null)
+                  : walletColumns(openMonthAtq !== null)
               }
               rows={rows}
               defaultSortKey={isMonthly ? "month" : undefined}
