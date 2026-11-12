@@ -3,8 +3,10 @@ import { toWei } from "utils/format";
 // The Proof of Humanity page shows every PNK payment of the program, from two sources:
 // - the airdrop: a fixed amount each registered human claims once, read live from the PoH v2 subgraph;
 // - the stake bonus: 1,200 PNK more for each human who kept at least 1,200 PNK staked in the Humanity court for six
-//   months after claiming. It is paid in batches, outside the subgraph, so it comes from one snapshot per month of
-//   payments (src/assets/poh-stake-bonus-index.json), built from the program's payout ledger.
+//   months after claiming. It is paid in batches, outside the subgraph, so it comes from one snapshot per month
+//   (src/assets/poh-stake-bonus-index.json), built from the program's payout ledger. A bonus counts in the month it was
+//   earned, the month its six months ended (windowEnd), whenever it was paid, as Curate's rewards count in the month
+//   of the work.
 
 export type PohKind = "airdrop" | "stakeBonus";
 
@@ -14,7 +16,7 @@ export interface PohReward {
   humanityId: string; // lowercase
   amount: bigint; // wei
   paidAt: string; // ISO 8601: when the airdrop was claimed, or the bonus payment's block time
-  month: string; // YYYY-MM (UTC) it counts in
+  month: string; // YYYY-MM (UTC) it counts in: the claim's month, or the month the bonus's six months ended
   txHash?: string; // stake bonus: the paying transaction
   windowEnd?: string; // stake bonus: YYYY-MM-DD, the day the six months of staking ended
 }
@@ -109,8 +111,9 @@ export function snapshotMonth(url: string): string | null {
 /**
  * The payments in one stake bonus snapshot. Throws, saying why, for a file the page can't trust, which is then left
  * out whole rather than shown in part: not the schema it reads, not the month its URL names, a line that isn't a
- * payment (an amount that isn't a positive decimal wei string, a humanity ID or transaction hash that isn't one, a time
- * outside the month), the same payment twice, or totals that aren't the sum of the lines (the docs' hard rules).
+ * payment (an amount that isn't a positive decimal wei string, a humanity ID or transaction hash that isn't one, six
+ * months that didn't end in the snapshot's month, a payment before they ended), the same payment twice, or totals that
+ * aren't the sum of the lines (the docs' hard rules).
  */
 export function bonusRewards(url: string, raw: unknown): PohReward[] {
   if (!isObject(raw)) throw new Error("not a snapshot");
@@ -137,13 +140,18 @@ export function bonusRewards(url: string, raw: unknown): PohReward[] {
       if (!ADDRESS.test(humanityId)) throw new Error(`${where}: humanity ID ${clip(line.humanityId)} isn't an address`);
       const txHash = text(line.txHash).toLowerCase();
       if (!TX_HASH.test(txHash)) throw new Error(`${where}: ${clip(line.txHash)} isn't a transaction hash`);
+      // the month a bonus counts in is the month its six months ended
+      const windowEnd = text(line.windowEnd);
+      const windowEndTime = Date.parse(`${windowEnd}T00:00:00.000Z`);
+      if (!DAY.test(windowEnd) || Number.isNaN(windowEndTime) || windowEnd.slice(0, 7) !== label) {
+        throw new Error(`${where}: windowEnd ${clip(line.windowEnd)} isn't a day in ${label}`);
+      }
       const paidAt = text(line.paidAt);
-      if (!ISO_TIME.test(paidAt) || Number.isNaN(Date.parse(paidAt)) || paidAt.slice(0, 7) !== label) {
-        throw new Error(`${where}: paidAt ${clip(line.paidAt)} isn't a time in ${label}`);
+      if (!ISO_TIME.test(paidAt) || Number.isNaN(Date.parse(paidAt)) || Date.parse(paidAt) < windowEndTime) {
+        throw new Error(`${where}: paidAt ${clip(line.paidAt)} isn't a time on or after ${windowEnd}`);
       }
       if (seen.has(`${address}|${txHash}`)) throw new Error(`it lists the payment to ${address} in ${txHash} twice`);
       seen.add(`${address}|${txHash}`);
-      const windowEnd = text(line.windowEnd);
       recipientSum += amount;
       rewards.push({
         kind: "stakeBonus",
@@ -153,8 +161,7 @@ export function bonusRewards(url: string, raw: unknown): PohReward[] {
         paidAt,
         month: label,
         txHash,
-        // only shown, in a tooltip
-        windowEnd: DAY.test(windowEnd) ? windowEnd : undefined,
+        windowEnd,
       });
     });
     if (recipientSum !== wei(recipient.total, `${address}'s total`)) {

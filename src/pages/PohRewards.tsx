@@ -174,7 +174,7 @@ function monthlyColumns(maxTotal: bigint, barColor: string): Column[] {
     { key: "stakeBonus", label: "Stake bonus", align: "right", render: dimZero("stakeBonus") },
     {
       key: "total",
-      label: "Total paid",
+      label: "Total",
       align: "right",
       render: (row) => (
         <BarWrap>
@@ -265,18 +265,22 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
                           </Pill>
                         </td>
                         <td>
+                          {/* A bonus sits in the month it was earned, so say when it was paid. */}
                           <MutedLabel as="span">
                             {reward.txHash ? (
-                              <a
-                                href={`https://gnosisscan.io/tx/${reward.txHash}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={`${reward.txHash} — view the payment on the explorer`}
-                              >
-                                {formatIsoDate(reward.paidAt)}
-                              </a>
+                              <>
+                                paid{" "}
+                                <a
+                                  href={`https://gnosisscan.io/tx/${reward.txHash}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`${reward.txHash} — view the payment on the explorer`}
+                                >
+                                  {formatIsoDate(reward.paidAt)}
+                                </a>
+                              </>
                             ) : (
-                              formatIsoDate(reward.paidAt)
+                              `claimed ${formatIsoDate(reward.paidAt)}`
                             )}
                           </MutedLabel>
                         </td>
@@ -398,7 +402,7 @@ export default function PohRewards() {
             )}{" "}
             — read live from the PoH v2 subgraph. Humans who keep at least 1,200 PNK staked in the Humanity court for
             six months after claiming get a <strong>stake bonus</strong> of 1,200 PNK more, paid in batches and
-            published as monthly snapshots on IPFS.
+            published as monthly snapshots on IPFS. A bonus counts in the month its six months ended.
           </>
         }
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}

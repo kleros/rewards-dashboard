@@ -90,7 +90,8 @@ function usePohOverview(data: PohData) {
       claims: claims.length,
       bonuses: bonuses.length,
       bonusHumans: countHumans(bonuses),
-      firstBonusMonth: ascending.find((row) => row.bonuses > 0)?.label ?? null,
+      // bonuses count in the month they were earned, so the first one paid is found by its payment date
+      firstPaidMonth: bonuses.length > 0 ? bonuses.map((r) => r.paidAt).sort()[0].slice(0, 7) : null,
       totalWei,
       bonusWei,
       perClaimWei: claims.length > 0 ? airdropWei / BigInt(claims.length) : 0n,
@@ -156,7 +157,7 @@ export function PohOverview({ data }: { data: PohData }) {
               </>
             )}{" "}
             The chart follows verification, not a payroll: <b>each column is humans choosing to claim</b> that month
-            {hasBonus ? ", plus the stake bonuses paid in it" : ""}.
+            {hasBonus ? ", plus the stake bonuses whose six months ended in it" : ""}.
           </HeroNote>
           <HeroLatest>
             Latest month · {formatMonthLabel(latest.label)}
@@ -167,7 +168,7 @@ export function PohOverview({ data }: { data: PohData }) {
         <HeroChart>
           <ChartHead>
             <ChartTitle>
-              PNK paid per month, {formatMonthLabel(first.label)} – {formatMonthLabel(latest.label)}
+              PNK rewarded per month, {formatMonthLabel(first.label)} – {formatMonthLabel(latest.label)}
             </ChartTitle>
             {hasBonus && (
               <Legend>
@@ -205,7 +206,7 @@ export function PohOverview({ data }: { data: PohData }) {
               : "Average airdrop received per verified human across all claims to date."}
           </TileDesc>
         </Tile>
-        {hasBonus && m.firstBonusMonth !== null ? (
+        {hasBonus && m.firstPaidMonth !== null ? (
           <Tile>
             <TileValue>
               {m.bonuses.toLocaleString()}
@@ -213,7 +214,7 @@ export function PohOverview({ data }: { data: PohData }) {
             </TileValue>
             <TileDesc>
               {formatPNKWhole(m.perBonusWei)} PNK more{m.uniformBonus ? " each" : " on average"}, paid since{" "}
-              {formatMonthLabel(m.firstBonusMonth)} to humans who kept at least 1,200 PNK staked in the Humanity court
+              {formatMonthLabel(m.firstPaidMonth)} to humans who kept at least 1,200 PNK staked in the Humanity court
               for six months after claiming.
             </TileDesc>
           </Tile>
@@ -312,13 +313,13 @@ export function PohToDate({ data }: { data: PohData }) {
             {m.uniformAmount ? "fixed for everyone" : "on average"}
           </div>
         </ToDateItem>
-        {m.firstBonusMonth !== null && (
+        {m.firstPaidMonth !== null && (
           <ToDateItem>
             <div className="n">{m.bonuses.toLocaleString()}</div>
             <div className="t">
               stake bonuses paid
               <br />
-              since {formatMonthLabel(m.firstBonusMonth)}
+              since {formatMonthLabel(m.firstPaidMonth)}
             </div>
           </ToDateItem>
         )}
