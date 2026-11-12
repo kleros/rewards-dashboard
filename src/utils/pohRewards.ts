@@ -58,10 +58,22 @@ export interface RawClaim {
 const ADDRESS = /^0x[0-9a-f]{40}$/;
 const TX_HASH = /^0x[0-9a-f]{64}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const WEI = /^(0|[1-9]\d*)$/;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
+// Snapshot text quoted in an error message, kept short.
+const clip = (value: unknown): string => {
+  const shown = JSON.stringify(value) ?? String(value);
+  return shown.length > 48 ? `${shown.slice(0, 47)}…` : shown;
+};
+// A decimal wei string, the only form the docs allow: no number, no float, no hex, no sign.
+function wei(value: unknown, what: string): bigint {
+  if (typeof value !== "string" || !WEI.test(value)) throw new Error(`${what} ${clip(value)} isn't a decimal wei string`);
+  return BigInt(value);
+}
 
 export function toMonthLabel(unixSeconds: number): string {
   const date = new Date(unixSeconds * 1000);
@@ -82,55 +94,83 @@ export function claimReward(raw: RawClaim): PohReward {
   };
 }
 
-// The YYYY-MM a stake bonus snapshot URL names (the index validator makes every URL end with it).
-export const snapshotMonth = (url: string): string | null =>
-  url.match(/\/poh-stake-bonus-(\d{4}-(?:0[1-9]|1[0-2]))\.json$/)?.[1] ?? null;
+// The YYYY-MM a stake bonus snapshot URL names: its path ends with it, as the
+// index validator (scripts/validate-rewards-index.ts) checks the path too.
+export function snapshotMonth(url: string): string | null {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  return pathname.match(/\/poh-stake-bonus-(\d{4}-(?:0[1-9]|1[0-2]))\.json$/)?.[1] ?? null;
+}
 
 /**
- * The payments in one stake bonus snapshot. Throws, saying why, for a file the page can't trust: not the schema it
- * reads, not the month its URL names, or totals that aren't the sum of its lines. Such a file is left out whole
- * rather than shown in part.
+ * The payments in one stake bonus snapshot. Throws, saying why, for a file the page can't trust, which is then left
+ * out whole rather than shown in part: not the schema it reads, not the month its URL names, a line that isn't a
+ * payment (an amount that isn't a positive decimal wei string, a humanity ID or transaction hash that isn't one, a time
+ * outside the month), the same payment twice, or totals that aren't the sum of the lines (the docs' hard rules).
  */
 export function bonusRewards(url: string, raw: unknown): PohReward[] {
   if (!isObject(raw)) throw new Error("not a snapshot");
-  if (raw.schema !== STAKE_BONUS_SCHEMA) throw new Error(`schema "${text(raw.schema)}", expected "${STAKE_BONUS_SCHEMA}"`);
+  if (raw.schema !== STAKE_BONUS_SCHEMA) throw new Error(`schema ${clip(raw.schema)}, expected "${STAKE_BONUS_SCHEMA}"`);
   const label = isObject(raw.period) ? text(raw.period.label) : "";
-  if (label === "" || label !== snapshotMonth(url)) throw new Error(`period "${label}" isn't the month its URL names`);
+  if (label === "" || label !== snapshotMonth(url)) throw new Error(`period ${clip(label)} isn't the month its URL names`);
   if (!isObject(raw.recipients)) throw new Error("no recipients");
+  const totals = isObject(raw.totals) ? raw.totals : {};
 
   const rewards: PohReward[] = [];
+  const seen = new Set<string>();
   let sum = 0n;
   for (const [key, recipient] of Object.entries(raw.recipients)) {
     const address = key.toLowerCase();
-    if (!ADDRESS.test(address)) throw new Error(`recipient "${key}" isn't an address`);
-    const lines = isObject(recipient) ? recipient.stakeBonus : undefined;
-    if (!Array.isArray(lines)) throw new Error(`${address} has no stakeBonus lines`);
+    if (!ADDRESS.test(address)) throw new Error(`recipient ${clip(key)} isn't an address`);
+    if (!isObject(recipient) || !Array.isArray(recipient.stakeBonus)) throw new Error(`${address} has no stakeBonus lines`);
     let recipientSum = 0n;
-    for (const line of lines) {
-      const fields = isObject(line) ? line : {};
-      const amount = toWei(text(fields.amount));
-      const txHash = text(fields.txHash).toLowerCase();
-      const windowEnd = text(fields.windowEnd);
+    recipient.stakeBonus.forEach((line: unknown, i: number) => {
+      const where = `${address}'s line ${i + 1}`;
+      if (!isObject(line)) throw new Error(`${where} isn't a payment`);
+      const amount = wei(line.amount, `${where}: amount`);
+      if (amount === 0n) throw new Error(`${where} pays nothing`);
+      const humanityId = text(line.humanityId).toLowerCase();
+      if (!ADDRESS.test(humanityId)) throw new Error(`${where}: humanity ID ${clip(line.humanityId)} isn't an address`);
+      const txHash = text(line.txHash).toLowerCase();
+      if (!TX_HASH.test(txHash)) throw new Error(`${where}: ${clip(line.txHash)} isn't a transaction hash`);
+      const paidAt = text(line.paidAt);
+      if (!ISO_TIME.test(paidAt) || Number.isNaN(Date.parse(paidAt)) || paidAt.slice(0, 7) !== label) {
+        throw new Error(`${where}: paidAt ${clip(line.paidAt)} isn't a time in ${label}`);
+      }
+      if (seen.has(`${address}|${txHash}`)) throw new Error(`it lists the payment to ${address} in ${txHash} twice`);
+      seen.add(`${address}|${txHash}`);
+      const windowEnd = text(line.windowEnd);
       recipientSum += amount;
       rewards.push({
         kind: "stakeBonus",
         address,
-        humanityId: text(fields.humanityId).toLowerCase(),
+        humanityId,
         amount,
-        paidAt: text(fields.paidAt),
+        paidAt,
         month: label,
-        // only ever used to build an explorer link, so only a real hash is kept
-        txHash: TX_HASH.test(txHash) ? txHash : undefined,
+        txHash,
+        // only shown, in a tooltip
         windowEnd: DAY.test(windowEnd) ? windowEnd : undefined,
       });
-    }
-    if (recipientSum !== toWei(text(isObject(recipient) ? recipient.total : undefined))) {
+    });
+    if (recipientSum !== wei(recipient.total, `${address}'s total`)) {
       throw new Error(`${address}'s lines don't add up to its total`);
     }
     sum += recipientSum;
   }
-  const total = isObject(raw.totals) ? toWei(text(raw.totals.total)) : 0n;
-  if (sum !== total) throw new Error(`its lines add up to ${sum} wei, but its total is ${total}`);
+  for (const key of ["stakeBonus", "total"]) {
+    if (wei(totals[key], `totals.${key}`) !== sum) {
+      throw new Error(`its lines add up to ${sum} wei, but totals.${key} is ${clip(totals[key])}`);
+    }
+  }
+  const recipientCount = Object.keys(raw.recipients).length;
+  if (totals.recipientCount !== recipientCount) {
+    throw new Error(`totals.recipientCount is ${clip(totals.recipientCount)}, but it has ${recipientCount} recipients`);
+  }
   return rewards;
 }
 
@@ -186,7 +226,8 @@ export function walletTotals(rewards: PohReward[]): PohWallet[] {
     if (reward.kind === "airdrop") wallet.airdrop += reward.amount;
     else wallet.stakeBonus += reward.amount;
     wallet.total += reward.amount;
-    if (!wallet.humanityId) wallet.humanityId = reward.humanityId;
+    // The subgraph's humanity ID for the wallet wins over a snapshot's.
+    if (reward.kind === "airdrop" || !wallet.humanityId) wallet.humanityId = reward.humanityId;
   }
   return [...wallets.values()];
 }

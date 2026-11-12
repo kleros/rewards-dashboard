@@ -303,7 +303,7 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
 export default function PohRewards() {
   const theme = useTheme();
   const { phase, progress, errors, data, retry } = usePohRewards();
-  const [activeTab, setActiveTab] = useState<string>(Tab.Monthly);
+  const [chosenTab, setActiveTab] = useState<string>(Tab.Monthly);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   // Search survives tab switches (and the wallet drill-down), held here
   // because the table remounts per tab. Two states because the semantic
@@ -315,6 +315,10 @@ export default function PohRewards() {
     () => (data ? [Tab.Monthly, Tab.Summary, ...data.months.map((month) => month.label)] : [Tab.Monthly, Tab.Summary]),
     [data]
   );
+  // A month can disappear on Retry (one that only had stake bonuses, if its
+  // snapshot fails this time): fall back to Monthly Totals rather than an
+  // empty month no tab points at.
+  const activeTab = tabs.includes(chosenTab) ? chosenTab : Tab.Monthly;
 
   const isMonthly = activeTab === Tab.Monthly;
 
@@ -339,7 +343,9 @@ export default function PohRewards() {
     // one month and the stake bonus in another is one human.
     const footer = [
       `All ${data.months.length} months`,
-      countHumans(data.rewards).toLocaleString(),
+      <span key="humans" title="Each human once, though the airdrop and the stake bonus are paid in different months">
+        {countHumans(data.rewards).toLocaleString()}
+      </span>,
       formatPNK(airdrop),
       stakeBonus === 0n ? "—" : formatPNK(stakeBonus),
       formatPNK(airdrop + stakeBonus),
@@ -374,7 +380,7 @@ export default function PohRewards() {
     );
     downloadBlob(
       new Blob([toCsv([header, ...body])], { type: "text/csv" }),
-      `poh-rewards-${activeTab.replace(/\s+/g, "-").toLowerCase()}.csv`
+      `poh-rewards-${activeTab.replace(/\s+/g, "-").toLowerCase()}${errors.length > 0 ? "-partial" : ""}.csv`
     );
   }
 
@@ -398,7 +404,7 @@ export default function PohRewards() {
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
-      {phase === "fetching" && <FetchProgress title="Fetching reward data from the subgraph..." progress={progress} />}
+      {phase === "fetching" && <FetchProgress title="Fetching reward data..." progress={progress} />}
 
       {phase === "error" && <ErrorState message={errors[0] ?? "Could not load the reward data."} onRetry={retry} />}
 

@@ -98,13 +98,21 @@ async function fetchAllClaims(
 
 const message = (error: unknown) => (error instanceof Error ? error.message : "unknown error");
 
+// The page waits for the stake bonus with the airdrop, so a snapshot IPFS
+// doesn't serve must not hold the airdrop back: each attempt gets this long
+// (two attempts), then the snapshot is reported as missing.
+const BONUS_TIMEOUT_MS = 15_000;
+
 // Every stake bonus payment in the published snapshots. A snapshot that fails
 // to load or can't be trusted is left out and reported, and the page says its
 // totals lack it: the airdrop still shows, so this never throws.
 async function fetchBonusRewards(): Promise<{ rewards: PohReward[]; snapshots: number; errors: string[] }> {
   try {
     const items = stakeBonusIndex.map((url) => ({ url, progressLabel: snapshotMonth(url) ?? url }));
-    const { results, errors } = await fetchAllWithProgress(items, () => undefined);
+    const { results, errors } = await fetchAllWithProgress(items, () => undefined, {
+      retries: 2,
+      timeoutMs: BONUS_TIMEOUT_MS,
+    });
     const rewards: PohReward[] = [];
     let snapshots = 0;
     for (const { item, data } of results) {
@@ -136,7 +144,10 @@ export function usePohRewards() {
     setProgress({ done: 0, total: MAX_PAGE_SIZE, current: "Querying Proof of Humanity subgraph…", startTime });
 
     try {
-      const [claims, bonus] = await Promise.all([fetchAllClaims(setProgress, startTime), fetchBonusRewards()]);
+      const bonusFetch = fetchBonusRewards();
+      const claims = await fetchAllClaims(setProgress, startTime);
+      setProgress((last) => ({ ...last, current: "Stake bonus snapshots from IPFS…" }));
+      const bonus = await bonusFetch;
       // Bonuses first: tables sort by total, and in a month's table a bonus
       // ties with the claims around it, so the stable sort lists it first.
       const aggregated = aggregate([...bonus.rewards, ...claims.map(claimReward)], bonus.snapshots);
