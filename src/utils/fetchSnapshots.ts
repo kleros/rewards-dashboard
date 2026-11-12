@@ -7,14 +7,20 @@ export interface ProgressState {
   startTime: number;
 }
 
-export async function fetchJson(url: string, retries = 3): Promise<unknown> {
+export interface FetchOptions {
+  retries?: number; // attempts per file, 3 by default
+  timeoutMs?: number; // per attempt, body included; none by default
+}
+
+export async function fetchJson(url: string, retries = 3, timeoutMs?: number): Promise<unknown> {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, timeoutMs === undefined ? undefined : { signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
-      if (i === retries - 1) throw err;
+      const timedOut = err instanceof Error && err.name === "TimeoutError";
+      if (i === retries - 1) throw timedOut ? new Error(`no answer within ${Math.round((timeoutMs ?? 0) / 1000)} s`) : err;
       await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
     }
   }
@@ -30,7 +36,8 @@ interface FetchItem {
 // Failures don't abort the run; they come back in `errors`.
 export async function fetchAllWithProgress<T extends FetchItem>(
   items: T[],
-  onProgress: (progress: ProgressState) => void
+  onProgress: (progress: ProgressState) => void,
+  { retries = 3, timeoutMs }: FetchOptions = {}
 ): Promise<{ results: { item: T; data: unknown }[]; errors: string[] }> {
   const total = items.length;
   const startTime = Date.now();
@@ -44,7 +51,7 @@ export async function fetchAllWithProgress<T extends FetchItem>(
     const settled = await Promise.allSettled(
       batch.map(async (item) => {
         onProgress({ done: Math.min(i, total), total, current: item.progressLabel, startTime });
-        return { item, data: await fetchJson(item.url) };
+        return { item, data: await fetchJson(item.url, retries, timeoutMs) };
       })
     );
     settled.forEach((result, j) => {

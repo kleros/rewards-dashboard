@@ -1,45 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { ProgressState } from "utils/fetchSnapshots";
-import { toWei } from "utils/format";
+import stakeBonusIndex from "assets/poh-stake-bonus-index.json";
+import { fetchAllWithProgress, ProgressState } from "utils/fetchSnapshots";
+import { PohData, PohReward, RawClaim, aggregate, bonusRewards, claimReward, snapshotMonth } from "utils/pohRewards";
 
-// Live data source: the Proof of Humanity v2 Gnosis subgraph. Every payout of
-// the fixed PNK airdrop is indexed as an immutable `RewardClaim` whose `id` is
-// the humanityID (one claim per registered human), so the whole history is
-// small and cheap to fetch straight from the subgraph on page load
+export type { PohData, PohKind, PohMonth, PohReward, PohWallet } from "utils/pohRewards";
+
+// Two sources. The airdrop is read live from the Proof of Humanity v2 Gnosis
+// subgraph: every payout of the fixed PNK airdrop is indexed as an immutable
+// `RewardClaim` whose `id` is the humanityID (one claim per registered human),
+// so the whole history is small and cheap to fetch on page load. The stake
+// bonus is paid outside the subgraph, so it comes from monthly snapshots on
+// IPFS, listed in src/assets/poh-stake-bonus-index.json.
 const SUBGRAPH_URL: string | undefined = import.meta.env.VITE_POH_GNOSIS_SUBGRAPH_URL;
 
 const MAX_PAGE_SIZE = 1000;
 
 const MAX_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 1000;
-
-export interface PohReward {
-  address: string;
-  humanityId: string;
-  amount: bigint;
-  claimedAt: string; // ISO 8601
-}
-
-export interface PohMonth {
-  label: string; // YYYY-MM
-  total: bigint;
-  recipients: PohReward[];
-}
-
-export interface PohData {
-  months: PohMonth[];
-  recipients: PohReward[];
-}
-
-// One reward-claim row as returned by the subgraph. `id` is the humanityID;
-// `claimer.id` is the wallet that received the PNK; `amount` is a wei string.
-interface RawClaim {
-  id: string;
-  amount: string;
-  timestamp: string;
-  claimer: { id: string };
-}
 
 const CLAIMS_QUERY = `query Claims($lastId: ID!, $first: Int!) {
   rewardClaims(first: $first, orderBy: id, orderDirection: asc, where: { id_gt: $lastId }) {
@@ -118,42 +96,37 @@ async function fetchAllClaims(
   return allClaims;
 }
 
-function toMonthLabel(unixSeconds: number): string {
-  const date = new Date(unixSeconds * 1000);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0"); // getUTCMonth is 0-based
-  return `${year}-${month}`;
-}
+const message = (error: unknown) => (error instanceof Error ? error.message : "unknown error");
 
-// Turn the flat claim list into one reward per wallet, grouped by month.
-function aggregate(rawClaims: RawClaim[]): PohData {
-  const recipients: PohReward[] = [];
-  const byMonth = new Map<string, PohReward[]>();
+// The page waits for the stake bonus with the airdrop, so a snapshot IPFS
+// doesn't serve must not hold the airdrop back: each attempt gets this long
+// (two attempts), then the snapshot is reported as missing.
+const BONUS_TIMEOUT_MS = 15_000;
 
-  for (const rawClaim of rawClaims) {
-    const reward: PohReward = {
-      address: rawClaim.claimer.id.toLowerCase(),
-      humanityId: rawClaim.id,
-      amount: toWei(rawClaim.amount),
-      claimedAt: new Date(Number(rawClaim.timestamp) * 1000).toISOString(),
-    };
-    recipients.push(reward);
-
-    const label = toMonthLabel(Number(rawClaim.timestamp));
-    const bucket = byMonth.get(label) ?? [];
-    bucket.push(reward);
-    byMonth.set(label, bucket);
+// Every stake bonus payment in the published snapshots. A snapshot that fails
+// to load or can't be trusted is left out and reported, and the page says its
+// totals lack it: the airdrop still shows, so this never throws.
+async function fetchBonusRewards(): Promise<{ rewards: PohReward[]; snapshots: number; errors: string[] }> {
+  try {
+    const items = stakeBonusIndex.map((url) => ({ url, progressLabel: snapshotMonth(url) ?? url }));
+    const { results, errors } = await fetchAllWithProgress(items, () => undefined, {
+      retries: 2,
+      timeoutMs: BONUS_TIMEOUT_MS,
+    });
+    const rewards: PohReward[] = [];
+    let snapshots = 0;
+    for (const { item, data } of results) {
+      try {
+        rewards.push(...bonusRewards(item.url, data));
+        snapshots++;
+      } catch (error) {
+        errors.push(`${item.progressLabel}: ${message(error)}`);
+      }
+    }
+    return { rewards, snapshots, errors: errors.map((error) => `Stake bonus ${error}`) };
+  } catch (error) {
+    return { rewards: [], snapshots: 0, errors: [`Stake bonus: ${message(error)}`] };
   }
-
-  const months: PohMonth[] = [...byMonth.entries()]
-    .map(([label, monthRewards]) => ({
-      label,
-      total: monthRewards.reduce((sum, reward) => sum + reward.amount, 0n),
-      recipients: monthRewards,
-    }))
-    .sort((a, b) => (a.label < b.label ? 1 : -1));
-
-  return { months, recipients };
 }
 
 export type PohPhase = "fetching" | "done" | "error";
@@ -171,18 +144,24 @@ export function usePohRewards() {
     setProgress({ done: 0, total: MAX_PAGE_SIZE, current: "Querying Proof of Humanity subgraph…", startTime });
 
     try {
+      const bonusFetch = fetchBonusRewards();
       const claims = await fetchAllClaims(setProgress, startTime);
-      const aggregated = aggregate(claims);
+      setProgress((last) => ({ ...last, current: "Stake bonus snapshots from IPFS…" }));
+      const bonus = await bonusFetch;
+      // Bonuses first: tables sort by total, and in a month's table a bonus
+      // ties with the claims around it, so the stable sort lists it first.
+      const aggregated = aggregate([...bonus.rewards, ...claims.map(claimReward)], bonus.snapshots);
 
-      if (aggregated.months.length === 0) {
+      if (!aggregated.months.some((month) => month.claims > 0)) {
         setErrors(["subgraph returned no reward claims"]);
         setPhase("error");
         return;
       }
+      setErrors(bonus.errors);
       setData(aggregated);
       setPhase("done");
     } catch (error) {
-      setErrors([error instanceof Error ? error.message : "unknown error"]);
+      setErrors([message(error)]);
       setPhase("error");
     }
   }, []);

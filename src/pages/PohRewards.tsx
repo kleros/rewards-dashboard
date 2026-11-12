@@ -22,7 +22,7 @@ import {
 } from "components/rewardStyles";
 import StatsRow, { Stat } from "components/StatsRow";
 import Tabs from "components/Tabs";
-import { PohData, PohMonth, PohReward, usePohRewards } from "hooks/usePohRewards";
+import { PohData, PohKind, PohMonth, PohReward, usePohRewards } from "hooks/usePohRewards";
 import {
   downloadBlob,
   formatDuration,
@@ -34,6 +34,7 @@ import {
   toCsv,
   toPnkNumber,
 } from "utils/format";
+import { countHumans, walletTotals } from "utils/pohRewards";
 
 // The two fixed tabs. The remaining tabs are month labels ("2026-07"), which are
 // dynamic strings — so `activeTab` is a string that is either a Tab value or a label.
@@ -42,17 +43,37 @@ enum Tab {
   Summary = "Summary",
 }
 
-// The airdrop is only paid on Gnosis, so the drill-down chain column is constant.
+// Both the airdrop and the stake bonus are only paid on Gnosis, so the drill-down chain column is constant.
 const CHAIN_LABEL = "Gnosis Chain";
 
-const Pill = styled.span`
+const KIND_LABEL: Record<PohKind, string> = { airdrop: "Airdrop", stakeBonus: "Stake bonus" };
+
+const Pill = styled.span<{ $kind: PohKind }>`
   display: inline-block;
   padding: 1px 9px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  color: ${({ theme }) => theme.primaryBlue};
-  background: ${({ theme }) => `${theme.primaryBlue}22`};
+  color: ${({ theme, $kind }) => ($kind === "airdrop" ? theme.primaryBlue : theme.seriesB)};
+  background: ${({ theme, $kind }) => `${$kind === "airdrop" ? theme.primaryBlue : theme.seriesB}22`};
+`;
+
+const Notice = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border: 1px solid ${({ theme }) => theme.error};
+  border-radius: 12px;
+  font-size: 13px;
+  color: ${({ theme }) => theme.secondaryText};
+
+  b {
+    color: ${({ theme }) => theme.error};
+  }
 `;
 
 // Render an ISO timestamp as a plain YYYY-MM-DD (empty for missing/invalid input).
@@ -62,49 +83,58 @@ function formatIsoDate(isoTimestamp: string | undefined): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 }
 
-function perClaimAmount(totalWei: bigint, claimCount: number): bigint {
-  return claimCount > 0 ? totalWei / BigInt(claimCount) : 0n;
-}
-
 function monthlyRows(data: PohData): Row[] {
   return data.months.map((month) => ({
     month: month.label,
-    recipients: BigInt(month.recipients.length),
+    humans: BigInt(month.humans),
+    airdrop: month.airdrop,
+    stakeBonus: month.stakeBonus,
     total: month.total,
   }));
 }
 
-// One table row per reward — used for both the all-time Summary and each
-// month's recipient table (they render the same recipient / humanity / total).
-function rewardRows(rewards: PohReward[]): Row[] {
-  return rewards.map((reward) => ({
-    addr: reward.address,
-    humanity: reward.humanityId,
-    total: reward.amount,
+// One table row per wallet — used for both the all-time Summary and each
+// month's recipient table (they render the same recipient / humanity / amounts).
+function walletRows(rewards: PohReward[]): Row[] {
+  return walletTotals(rewards).map((wallet) => ({
+    addr: wallet.address,
+    humanity: wallet.humanityId,
+    airdrop: wallet.airdrop,
+    stakeBonus: wallet.stakeBonus,
+    total: wallet.total,
   }));
 }
 
 function scopeStats(tab: string, data: PohData): Stat[] {
-  // One claim per wallet, so the claim count is just the number of recipients.
-  if (tab === Tab.Summary || tab === Tab.Monthly) {
-    const total = data.recipients.reduce((sum, reward) => sum + reward.amount, 0n);
-    const span =
-      data.months.length > 0 ? monthSpan(data.months[data.months.length - 1].label, data.months[0].label) : null;
-    return [
-      { label: "Months", value: formatMonthsStat(data.months.length, span) },
-      { label: "Humans rewarded", value: data.recipients.length.toLocaleString() },
-      { label: "Total distributed", value: `${formatPNK(total)} PNK` },
-      { label: "Per claim", value: `${formatPNK(perClaimAmount(total, data.recipients.length))} PNK` },
-    ];
+  const isAllTime = tab === Tab.Summary || tab === Tab.Monthly;
+  const month = isAllTime ? undefined : data.months.find((candidate) => candidate.label === tab);
+  const rewards = isAllTime ? data.rewards : month?.rewards ?? [];
+  let airdrop = 0n;
+  let stakeBonus = 0n;
+  let claims = 0;
+  let bonuses = 0;
+  for (const reward of rewards) {
+    if (reward.kind === "airdrop") {
+      airdrop += reward.amount;
+      claims++;
+    } else {
+      stakeBonus += reward.amount;
+      bonuses++;
+    }
   }
-  const month = data.months.find((candidate) => candidate.label === tab);
-  const total = month?.total ?? 0n;
-  const recipientCount = month?.recipients.length ?? 0;
+  const span =
+    data.months.length > 0 ? monthSpan(data.months[data.months.length - 1].label, data.months[0].label) : null;
   return [
-    { label: "Month", value: tab },
-    { label: "Humans rewarded", value: recipientCount.toLocaleString() },
-    { label: "Total distributed", value: `${formatPNK(total)} PNK` },
-    { label: "Per claim", value: `${formatPNK(perClaimAmount(total, recipientCount))} PNK` },
+    isAllTime
+      ? { label: "Months", value: formatMonthsStat(data.months.length, span) }
+      : { label: "Month", value: tab },
+    { label: "Humans rewarded", value: countHumans(rewards).toLocaleString() },
+    { label: "Total distributed", value: `${formatPNK(airdrop + stakeBonus)} PNK` },
+    { label: `Airdrop · ${claims.toLocaleString()} claim${claims === 1 ? "" : "s"}`, value: `${formatPNK(airdrop)} PNK` },
+    {
+      label: `Stake bonus · ${bonuses.toLocaleString()} payment${bonuses === 1 ? "" : "s"}`,
+      value: `${formatPNK(stakeBonus)} PNK`,
+    },
   ];
 }
 
@@ -118,10 +148,15 @@ function monoColumn(key: string, label: string): Column {
   };
 }
 
+// Most wallets and months have no stake bonus: show a dash rather than a column of zeros.
+const dimZero = (key: string) => (row: Row) => ((row[key] as bigint) === 0n ? "—" : formatPNK(row[key] as bigint));
+
 function walletColumns(): Column[] {
   return [
     monoColumn("addr", "Recipient"),
     monoColumn("humanity", "Humanity ID"),
+    { key: "airdrop", label: "Airdrop", align: "right", render: dimZero("airdrop") },
+    { key: "stakeBonus", label: "Stake bonus", align: "right", render: dimZero("stakeBonus") },
     { key: "total", label: "Total (PNK)", align: "right" },
   ];
 }
@@ -130,14 +165,16 @@ function monthlyColumns(maxTotal: bigint, barColor: string): Column[] {
   return [
     { key: "month", label: "Month", align: "left" },
     {
-      key: "recipients",
+      key: "humans",
       label: "Humans rewarded",
       align: "right",
-      render: (row) => Number(row.recipients).toLocaleString(),
+      render: (row) => Number(row.humans).toLocaleString(),
     },
+    { key: "airdrop", label: "Airdrop", align: "right", render: dimZero("airdrop") },
+    { key: "stakeBonus", label: "Stake bonus", align: "right", render: dimZero("stakeBonus") },
     {
       key: "total",
-      label: "Total paid",
+      label: "Total",
       align: "right",
       render: (row) => (
         <BarWrap>
@@ -160,19 +197,23 @@ interface WalletDetailProps {
 
 interface MonthBlock {
   label: string;
-  reward: PohReward;
+  total: bigint;
+  rewards: PohReward[];
 }
 
 function WalletDetail({ address, months, onBack }: WalletDetailProps) {
-  // The wallet claims once, so this is a single block — but iterating months
-  // keeps it correct (and the all-time total right) without assuming just one.
+  // A wallet claims the airdrop once and may get the stake bonus months later:
+  // one block per month it was paid in, one line per payment.
   let allTimeTotal = 0n;
   const blocks: MonthBlock[] = [];
   for (const month of months) {
-    const reward = month.recipients.find((candidate) => candidate.address === address);
-    if (!reward) continue;
-    allTimeTotal += reward.amount;
-    blocks.push({ label: month.label, reward });
+    const rewards = month.rewards
+      .filter((candidate) => candidate.address === address)
+      .sort((a, b) => a.paidAt.localeCompare(b.paidAt));
+    if (rewards.length === 0) continue;
+    const total = rewards.reduce((sum, reward) => sum + reward.amount, 0n);
+    allTimeTotal += total;
+    blocks.push({ label: month.label, total, rewards });
   }
 
   return (
@@ -196,10 +237,10 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
             <h4>No rewards recorded for this address.</h4>
           </PeriodBlock>
         ) : (
-          blocks.map(({ label, reward }) => (
+          blocks.map(({ label, total, rewards }) => (
             <PeriodBlock key={label}>
               <h4>
-                {label} — {formatPNK(reward.amount)} PNK
+                {label} — {formatPNK(total)} PNK
               </h4>
               <div style={{ overflowX: "auto" }}>
                 <LinesTable>
@@ -209,21 +250,49 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
                     ))}
                   </colgroup>
                   <tbody>
-                    <tr>
-                      <td>
-                        <Pill>Airdrop</Pill>
-                      </td>
-                      <td>
-                        <MutedLabel as="span">{formatIsoDate(reward.claimedAt)}</MutedLabel>
-                      </td>
-                      <td>
-                        <MutedLabel as="span">{CHAIN_LABEL}</MutedLabel>
-                      </td>
-                      <td>
-                        <Mono title={reward.humanityId}>{shortAddress(reward.humanityId)}</Mono>
-                      </td>
-                      <NumCell>{formatPNK(reward.amount)} PNK</NumCell>
-                    </tr>
+                    {rewards.map((reward, i) => (
+                      <tr key={i}>
+                        <td>
+                          <Pill
+                            $kind={reward.kind}
+                            title={
+                              reward.windowEnd
+                                ? `For keeping the airdrop staked six months, until ${reward.windowEnd}`
+                                : undefined
+                            }
+                          >
+                            {KIND_LABEL[reward.kind]}
+                          </Pill>
+                        </td>
+                        <td>
+                          {/* A bonus sits in the month it was earned, so say when it was paid. */}
+                          <MutedLabel as="span">
+                            {reward.txHash ? (
+                              <>
+                                paid{" "}
+                                <a
+                                  href={`https://gnosisscan.io/tx/${reward.txHash}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title={`${reward.txHash} — view the payment on the explorer`}
+                                >
+                                  {formatIsoDate(reward.paidAt)}
+                                </a>
+                              </>
+                            ) : (
+                              `claimed ${formatIsoDate(reward.paidAt)}`
+                            )}
+                          </MutedLabel>
+                        </td>
+                        <td>
+                          <MutedLabel as="span">{CHAIN_LABEL}</MutedLabel>
+                        </td>
+                        <td>
+                          <Mono title={reward.humanityId}>{shortAddress(reward.humanityId)}</Mono>
+                        </td>
+                        <NumCell>{formatPNK(reward.amount)} PNK</NumCell>
+                      </tr>
+                    ))}
                   </tbody>
                 </LinesTable>
               </div>
@@ -238,7 +307,7 @@ function WalletDetail({ address, months, onBack }: WalletDetailProps) {
 export default function PohRewards() {
   const theme = useTheme();
   const { phase, progress, errors, data, retry } = usePohRewards();
-  const [activeTab, setActiveTab] = useState<string>(Tab.Monthly);
+  const [chosenTab, setActiveTab] = useState<string>(Tab.Monthly);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   // Search survives tab switches (and the wallet drill-down), held here
   // because the table remounts per tab. Two states because the semantic
@@ -250,30 +319,43 @@ export default function PohRewards() {
     () => (data ? [Tab.Monthly, Tab.Summary, ...data.months.map((month) => month.label)] : [Tab.Monthly, Tab.Summary]),
     [data]
   );
+  // A month can disappear on Retry (one that only had stake bonuses, if its
+  // snapshot fails this time): fall back to Monthly Totals rather than an
+  // empty month no tab points at.
+  const activeTab = tabs.includes(chosenTab) ? chosenTab : Tab.Monthly;
 
   const isMonthly = activeTab === Tab.Monthly;
 
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     if (isMonthly) return monthlyRows(data);
-    if (activeTab === Tab.Summary) return rewardRows(data.recipients);
-    return rewardRows(data.months.find((month) => month.label === activeTab)?.recipients ?? []);
+    if (activeTab === Tab.Summary) return walletRows(data.rewards);
+    return walletRows(data.months.find((month) => month.label === activeTab)?.rewards ?? []);
   }, [data, activeTab, isMonthly]);
 
   const monthly = useMemo(() => {
     if (!data || !isMonthly) return null;
     let maxTotal = 0n;
-    let total = 0n;
-    let humans = 0;
-    for (const row of rows) {
-      const rowTotal = row.total as bigint;
-      total += rowTotal;
-      humans += Number(row.recipients);
-      if (rowTotal > maxTotal) maxTotal = rowTotal;
+    let airdrop = 0n;
+    let stakeBonus = 0n;
+    for (const month of data.months) {
+      airdrop += month.airdrop;
+      stakeBonus += month.stakeBonus;
+      if (month.total > maxTotal) maxTotal = month.total;
     }
-    const footer = [`All ${rows.length} months`, humans.toLocaleString(), formatPNK(total)];
+    // Humans are counted once across all months: someone paid the airdrop in
+    // one month and the stake bonus in another is one human.
+    const footer = [
+      `All ${data.months.length} months`,
+      <span key="humans" title="Each human once, though the airdrop and the stake bonus are paid in different months">
+        {countHumans(data.rewards).toLocaleString()}
+      </span>,
+      formatPNK(airdrop),
+      stakeBonus === 0n ? "—" : formatPNK(stakeBonus),
+      formatPNK(airdrop + stakeBonus),
+    ];
     return { maxTotal, footer };
-  }, [data, isMonthly, rows]);
+  }, [data, isMonthly]);
 
   const badge = useMemo(() => {
     if (!data || data.months.length === 0) return undefined;
@@ -288,16 +370,21 @@ export default function PohRewards() {
 
   function downloadCsv() {
     const header = isMonthly
-      ? ["Month", "Humans rewarded", "Total (PNK)"]
-      : ["Recipient", "Humanity ID", "Total (PNK)"];
+      ? ["Month", "Humans rewarded", "Airdrop (PNK)", "Stake bonus (PNK)", "Total (PNK)"]
+      : ["Recipient", "Humanity ID", "Airdrop (PNK)", "Stake bonus (PNK)", "Total (PNK)"];
+    const amounts = (row: Row) => [
+      formatPNK(row.airdrop as bigint),
+      formatPNK(row.stakeBonus as bigint),
+      formatPNK(row.total as bigint),
+    ];
     const body = rows.map((row) =>
       isMonthly
-        ? [String(row.month), String(row.recipients), formatPNK(row.total as bigint)]
-        : [String(row.addr), String(row.humanity), formatPNK(row.total as bigint)]
+        ? [String(row.month), String(row.humans), ...amounts(row)]
+        : [String(row.addr), String(row.humanity), ...amounts(row)]
     );
     downloadBlob(
       new Blob([toCsv([header, ...body])], { type: "text/csv" }),
-      `poh-rewards-${activeTab.replace(/\s+/g, "-").toLowerCase()}.csv`
+      `poh-rewards-${activeTab.replace(/\s+/g, "-").toLowerCase()}${errors.length > 0 ? "-partial" : ""}.csv`
     );
   }
 
@@ -313,18 +400,29 @@ export default function PohRewards() {
             {data && data.months.length > 0 && (
               <> since {formatMonthLabel(data.months[data.months.length - 1].label)}</>
             )}{" "}
-            — read live from the PoH v2 subgraph.
+            — read live from the PoH v2 subgraph. Humans who keep at least 1,200 PNK staked in the Humanity court for
+            six months after claiming get a <strong>stake bonus</strong> of 1,200 PNK more, paid in batches and
+            published as monthly snapshots on IPFS. A bonus counts in the month its six months ended.
           </>
         }
         actions={phase === "done" && <PrimaryButton onClick={downloadCsv}>Download CSV</PrimaryButton>}
       />
 
-      {phase === "fetching" && <FetchProgress title="Fetching reward data from the subgraph..." progress={progress} />}
+      {phase === "fetching" && <FetchProgress title="Fetching reward data..." progress={progress} />}
 
       {phase === "error" && <ErrorState message={errors[0] ?? "Could not load the reward data."} onRetry={retry} />}
 
       {phase === "done" && data && (
         <>
+          {errors.length > 0 && (
+            <Notice role="alert">
+              <span>
+                <b>Some stake bonus payments are missing.</b> The totals below leave out what couldn't be loaded (
+                {errors.join("; ")}).
+              </span>
+              <SecondaryButton onClick={retry}>Retry</SecondaryButton>
+            </Notice>
+          )}
           {isMonthly ? <PohOverview data={data} /> : <StatsRow stats={scopeStats(activeTab, data)} />}
           <Tabs tabs={tabs} active={activeTab} onSelect={selectTab} />
           {selectedAddress ? (
@@ -352,10 +450,11 @@ export default function PohRewards() {
           )}
           {isMonthly && !selectedAddress && <PohToDate data={data} />}
           <Foot>
-            Data from {data.months.length} month(s), live from the PoH v2 subgraph.{" "}
+            Data from {data.months.length} month(s): airdrop claims live from the PoH v2 subgraph, stake bonus
+            payments from {data.bonusSnapshots} monthly snapshot(s) on IPFS.{" "}
             {isMonthly
               ? "Click a month to open its recipient table."
-              : "Click a recipient to see their claim breakdown."}
+              : "Click a recipient to see their payments."}
           </Foot>
         </>
       )}
